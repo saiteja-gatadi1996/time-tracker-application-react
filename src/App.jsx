@@ -12,31 +12,30 @@ import YearlyView from './components/Reports/YearlyView';
 import PomodoroView from './components/Pomodoro/PomodoroView';
 import LiveSwitcher from './components/LiveSwitcher';
 import './styles/time-tracker.css';
-import { auth } from './utils/firebase';
-import { signInGoogle } from './utils/firebase';
+import { auth, signInGoogle } from './utils/firebase';
 import { ADMIN, DS_KEY, SOURCE } from './utils/constants';
 
 export default function App() {
   const [view, setView] = useState('hourly');
-  // auth
+
+  // auth state
   const [user, setUser] = useState(null);
-  const qs = new URLSearchParams(window.location.search);
-  const allowAdminUI =
-    qs.get('admin') === '1' || (user && user.uid === ADMIN.UID);
+  const [authError, setAuthError] = useState(''); // for “only admin can sign in” message
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, setUser);
     return () => off();
   }, []);
-  const isAdmin = user?.uid === ADMIN.UID;
+  const isAdmin =
+    !!user && (user.uid === ADMIN.UID || user.email === ADMIN.EMAIL);
 
-  // data source
+  // data source (LIVE vs LOCAL)
   const readSource = () => localStorage.getItem(DS_KEY) || SOURCE.LIVE;
   const [source, setSource] = useState(readSource);
 
   useEffect(() => {
     if (!localStorage.getItem(DS_KEY)) {
-      localStorage.setItem(DS_KEY, SOURCE.LIVE);
+      localStorage.setItem(DS_KEY, SOURCE.LIVE); // default first-time visitors: LIVE
     }
     const sync = () => setSource(readSource());
     window.addEventListener('storage', sync);
@@ -48,17 +47,39 @@ export default function App() {
   }, []);
 
   const isLive = source !== SOURCE.LOCAL;
+
   const bannerText = isLive
     ? isAdmin
       ? 'Saiteja · LIVE (you publish by editing your private copy)'
       : 'Saiteja · LIVE (read-only)'
     : 'Your Tracker (private on this device)';
 
+  // --- Auth handlers ---
   const signIn = async () => {
-    await signInGoogle();
+    setAuthError('');
+    try {
+      const u = await signInGoogle(); // returns Firebase user
+      // Gate immediately by email + uid
+      const ok = u && (u.email === ADMIN.EMAIL || u.uid === ADMIN.UID);
+
+      if (!ok) {
+        // Show a clear error and sign them out right away
+        setAuthError('Only admin can sign in. You are viewing read-only.');
+        try {
+          await fbSignOut(auth);
+        } catch {}
+      }
+    } catch (err) {
+      setAuthError('Sign in failed. Please try again.');
+      // optional: console.error(err);
+    }
   };
+
   const signOut = async () => {
-    await fbSignOut(auth);
+    setAuthError('');
+    try {
+      await fbSignOut(auth);
+    } catch {}
   };
 
   return (
@@ -70,36 +91,48 @@ export default function App() {
             <div className='header-bar'>
               <h1 className='title'>⏰ Time Tracker Application</h1>
 
-              {/* Auth (hidden for everyone unless ?admin=1 OR already signed-in as admin) */}
-              {allowAdminUI && (
-                <div className='auth-box'>
-                  {user && user.uid === ADMIN.UID ? (
-                    <>
-                      <span className='auth-id'>
+              {/* Auth (always visible; gated on action) */}
+              <div className='auth-box'>
+                {user ? (
+                  <>
+                    <span className='auth-id'>
+                      {user.photoURL ? (
                         <img
                           className='auth-avatar'
-                          src={user.photoURL || ''}
+                          src={user.photoURL}
                           alt=''
                         />
-                        Signed in as <strong>{user.email}</strong>
-                      </span>
-                      <button
-                        className='button'
-                        onClick={async () =>
-                          (await import('firebase/auth')).signOut(auth)
-                        }
-                      >
-                        Sign out
-                      </button>
-                    </>
-                  ) : (
-                    <button className='button' onClick={signInGoogle}>
-                      Sign in (admin)
+                      ) : null}
+                      Signed in as <strong>{user.email}</strong>
+                    </span>
+                    <button className='button' onClick={signOut}>
+                      Sign out
                     </button>
-                  )}
-                </div>
-              )}
+                  </>
+                ) : (
+                  <button className='button' onClick={signIn}>
+                    Sign in with Google
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Small inline error (dismisses on next attempt / sign out) */}
+            {authError && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#991b1b',
+                  fontSize: 13,
+                }}
+              >
+                {authError}
+              </div>
+            )}
 
             {/* Navigation */}
             <NavBar view={view} setView={setView} />
