@@ -2,8 +2,9 @@ import React from 'react';
 import { useTimeStore } from '../../store/useTimeStore';
 import { isPast } from '../../utils/date';
 export default function ReflectionCard() {
-  const { reflections, setReflections, dateKey } = useTimeStore();
+  const { isReadOnly, reflections, setReflections, dateKey } = useTimeStore();
   const disabled = isPast(dateKey);
+  const value = reflections?.[dateKey] ?? '';
   return (
     <div className='card'>
       <div className='form-group' style={{ marginTop: 16 }}>
@@ -12,14 +13,18 @@ export default function ReflectionCard() {
           be?
         </label>
         <textarea
-          className='input'
-          rows={6}
-          placeholder='Type your answer... (auto-saved)'
+          placeholder='Type your answer'
+          value={value}
+          readOnly={isReadOnly} // <- blocks editing in LIVE
+          aria-readonly={isReadOnly}
           disabled={disabled}
-          value={reflections[dateKey] || ''}
-          onChange={(e) =>
-            setReflections((p) => ({ ...p, [dateKey]: e.target.value }))
-          }
+          onChange={(e) => {
+            if (isReadOnly) return; // <- extra guard
+            const text = e.target.value;
+            setReflections((prev) => ({ ...prev, [dateKey]: text }));
+          }}
+          className={`input ${isReadOnly} ? 'is-ro' : ''`}
+          style={{ width: '100%', minHeight: 120 }}
         />
       </div>
       <div className='form-group'>

@@ -7,10 +7,22 @@ export const MISC_ACTIVITIES = [
   'MISC-LUNCH',
   'MISC-DINNER',
 ];
+
+export const LIVE = { DOC_ID: 'saiteja' }; // public live doc id
+export const ADMIN = { UID: 'qR6lho89MLVsx21JkpsfVygFE9W2' }; // your Firebase UID after you sign in once
+
+// utils/constants.js
 export const STORAGE = {
-  DAILY: 'timeTrackerData',
-  HOURLY: 'hourlyData',
-  PATTERNS: 'wastedPatterns',
-  REFLECTIONS: 'reflections',
-  POMODORO: 'pomodoroTimer',
+  DAILY: 'TT_DAILY',
+  HOURLY: 'TT_HOURLY',
+  PATTERNS: 'TT_PATTERNS',
+  REFLECTIONS: 'TT_REFLECTIONS',
+  POMODORO: 'TT_POMODORO',
+};
+
+// Data source key + canonical values
+export const DS_KEY = 'DATA_SOURCE';
+export const SOURCE = {
+  LOCAL: 'local',
+  LIVE: `live:${LIVE.DOC_ID}`,
 };

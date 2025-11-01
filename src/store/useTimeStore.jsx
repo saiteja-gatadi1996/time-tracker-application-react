@@ -3,22 +3,59 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-import { STORAGE, MAIN_ACTIVITIES } from '../utils/constants';
+import {
+  STORAGE,
+  MAIN_ACTIVITIES,
+  ADMIN,
+  LIVE,
+  DS_KEY,
+  SOURCE,
+} from '../utils/constants';
+
+import {
+  auth,
+  db,
+  doc,
+  onSnapshot,
+  setDoc,
+  signInGoogle,
+  onAuthStateChanged,
+} from '../utils/firebase';
+
 import { formatHours, getDateKey, isPast } from '../utils/date';
-import { persistAll, recomputeFromHourly } from '../utils/persistence';
+import { recomputeFromHourly } from '../utils/persistence';
 import {
   autoCalcPatterns,
   countMiscHours,
   halfToHours,
   recalcTotalsOnly,
 } from '../utils/report';
+
 const Ctx = createContext(null);
+
 export const TimeStoreProvider = ({ children }) => {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [reportRange, setReportRange] = useState(() => new Date());
+
+  // role: 'viewer' | 'admin' (resolved from auth state)
+  const [role, setRole] = useState('viewer');
+
+  // Data source: 'local' (private) or 'live:saiteja' (public live)
+  const [dataSource, setDataSource] = useState(() => {
+    const src = localStorage.getItem(DS_KEY);
+    if (!src) {
+      localStorage.setItem(DS_KEY, SOURCE.LIVE); // default new visitors to LIVE
+      return SOURCE.LIVE;
+    }
+    return src;
+  });
+
+  const isLocal = dataSource === SOURCE.LOCAL;
+  const isReadOnly = !isLocal; // LIVE is always read-only in the UI
 
   const [dailyData, setDailyData] = useState(() => {
     try {
@@ -48,6 +85,199 @@ export const TimeStoreProvider = ({ children }) => {
       return {};
     }
   });
+
+  // Keep dataSource in sync across tabs or when LiveSwitcher updates it
+  useEffect(() => {
+    const sync = () =>
+      setDataSource(localStorage.getItem(DS_KEY) || SOURCE.LIVE);
+    window.addEventListener('storage', sync);
+    window.addEventListener('datasource:changed', sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('datasource:changed', sync);
+    };
+  }, []);
+
+  // When entering LOCAL mode, hydrate state from localStorage
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      setDailyData(JSON.parse(localStorage.getItem(STORAGE.DAILY)) || {});
+      setHourlyData(JSON.parse(localStorage.getItem(STORAGE.HOURLY)) || {});
+      setWastedPatterns(
+        JSON.parse(localStorage.getItem(STORAGE.PATTERNS)) || {}
+      );
+      setReflections(
+        JSON.parse(localStorage.getItem(STORAGE.REFLECTIONS)) || {}
+      );
+    } catch {}
+  }, [isLocal]);
+
+  // Persist LOCAL changes to localStorage
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      localStorage.setItem(STORAGE.DAILY, JSON.stringify(dailyData));
+    } catch {}
+  }, [dailyData, isLocal]);
+
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      localStorage.setItem(STORAGE.HOURLY, JSON.stringify(hourlyData));
+    } catch {}
+  }, [hourlyData, isLocal]);
+
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      localStorage.setItem(STORAGE.PATTERNS, JSON.stringify(wastedPatterns));
+    } catch {}
+  }, [wastedPatterns, isLocal]);
+
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      localStorage.setItem(STORAGE.REFLECTIONS, JSON.stringify(reflections));
+    } catch {}
+  }, [reflections, isLocal]);
+
+  // Derived day key + computed totals
+  const dateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
+
+  const derived = useMemo(() => {
+    if (hourlyData[dateKey]) return recalcTotalsOnly(dateKey, hourlyData);
+    const base = dailyData[dateKey] || { study: 0, sleep: 0, wasted: 0 };
+    return {
+      ...base,
+      accounted: (base.study || 0) + (base.sleep || 0) + (base.wasted || 0),
+    };
+  }, [hourlyData, dailyData, dateKey]);
+
+  // -----------------------
+  // Editing helpers (blocked in LIVE/read-only)
+  // -----------------------
+  const setHalfActivity = (k, h, half, value) => {
+    if (isReadOnly)
+      return alert(
+        'Read-only in LIVE mode. Switch to “Your Tracker (private)” to edit.'
+      );
+    if (isPast(k)) return alert('Cannot edit past days.');
+
+    setHourlyData((prev) => {
+      const day = prev[k]
+        ? [...prev[k]]
+        : Array.from({ length: 24 }, () => ({ first: null, second: null }));
+
+      const row = { ...day[h] };
+      if (value === 'Back') row[half] = null;
+      else if (value === 'MISC')
+        return prev; // UI handles MISC toggles separately
+      else row[half] = value;
+      day[h] = row;
+
+      const next = { ...prev, [k]: day };
+
+      // recompute totals from this updated day only
+      let s = 0,
+        sl = 0,
+        w = 0;
+      day.forEach((r) => {
+        s +=
+          halfToHours(r.first, 'Studying') + halfToHours(r.second, 'Studying');
+        sl +=
+          halfToHours(r.first, 'Sleeping') + halfToHours(r.second, 'Sleeping');
+        w += halfToHours(r.first, 'Wasted') + halfToHours(r.second, 'Wasted');
+      });
+
+      setDailyData((p) => ({ ...p, [k]: { study: s, sleep: sl, wasted: w } }));
+      setWastedPatterns((p) => ({ ...p, [k]: autoCalcPatterns(k, next) }));
+      return next;
+    });
+  };
+
+  const handleInputChange = (k, kind, val) => {
+    if (isReadOnly)
+      return alert(
+        'Read-only in LIVE mode. Switch to “Your Tracker (private)” to edit.'
+      );
+    const d = dailyData[k] || { study: 0, sleep: 0, wasted: 0 };
+    const v = parseFloat(val) || 0;
+    const n = { ...d, [kind]: v };
+    setDailyData((prev) => ({ ...prev, [k]: n }));
+  };
+
+  const addPattern = (k, txt) => {
+    if (isReadOnly)
+      return alert(
+        'Read-only in LIVE mode. Switch to “Your Tracker (private)” to edit.'
+      );
+    if (!txt) return;
+    setWastedPatterns((p) => {
+      const a = p[k] ? [...p[k]] : [];
+      a.push(txt);
+      return { ...p, [k]: a };
+    });
+  };
+
+  const removePattern = (k, i) => {
+    if (isReadOnly) return;
+    setWastedPatterns((p) => {
+      const a = p[k] ? [...p[k]] : [];
+      a.splice(i, 1);
+      return { ...p, [k]: a };
+    });
+  };
+
+  const exportAll = () => {
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          { dailyData, hourlyData, wastedPatterns, reflections },
+          null,
+          2
+        ),
+      ],
+      { type: 'application/json' }
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `time-tracker-backup-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  function importAll(obj) {
+    if (!isLocal) {
+      alert('Switch to “Your Tracker (private)” to import your own data.');
+      return;
+    }
+    try {
+      let daily = obj?.dailyData || {};
+      const hourly = obj?.hourlyData || {};
+      let patterns = obj?.wastedPatterns || {};
+      const refl = obj?.reflections || {};
+
+      if (Object.keys(hourly).length > 0) {
+        const rec = recomputeFromHourly(hourly);
+        daily = { ...daily, ...rec.daily };
+        patterns = { ...patterns, ...rec.patterns };
+      }
+
+      setDailyData(daily);
+      setHourlyData(hourly);
+      setWastedPatterns(patterns);
+      setReflections(refl);
+    } catch (err) {
+      console.error('Import failed', err);
+      alert('Import failed: invalid JSON');
+    }
+  }
+
+  // -----------------------
+  // Pomodoro (local, reload-proof)
+  // -----------------------
   const [pomodoro, setPomodoro] = useState(() => {
     try {
       return (
@@ -71,74 +301,6 @@ export const TimeStoreProvider = ({ children }) => {
       };
     }
   });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE.DAILY, JSON.stringify(dailyData));
-    } catch {}
-  }, [dailyData]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE.HOURLY, JSON.stringify(hourlyData));
-    } catch {}
-  }, [hourlyData]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE.PATTERNS, JSON.stringify(wastedPatterns));
-    } catch {}
-  }, [wastedPatterns]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE.REFLECTIONS, JSON.stringify(reflections));
-    } catch {}
-  }, [reflections]);
-  const dateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
-
-  const derived = useMemo(() => {
-    if (hourlyData[dateKey]) return recalcTotalsOnly(dateKey, hourlyData);
-    const base = dailyData[dateKey] || { study: 0, sleep: 0, wasted: 0 };
-    return {
-      ...base,
-      accounted: (base.study || 0) + (base.sleep || 0) + (base.wasted || 0),
-    };
-  }, [hourlyData, dailyData, dateKey]);
-
-  const setHalfActivity = (k, h, half, value) => {
-    if (isPast(k)) return alert('Cannot edit past days.');
-
-    setHourlyData((prev) => {
-      const day = prev[k]
-        ? [...prev[k]]
-        : Array.from({ length: 24 }, () => ({ first: null, second: null }));
-
-      const row = { ...day[h] };
-      if (value === 'Back') row[half] = null;
-      else if (value === 'MISC')
-        return prev; // ignore toggle here; UI handles it
-      else row[half] = value;
-      day[h] = row;
-
-      const next = { ...prev, [k]: day };
-
-      // recompute totals from *this* updated day
-      let s = 0,
-        sl = 0,
-        w = 0;
-      day.forEach((r) => {
-        s +=
-          halfToHours(r.first, 'Studying') + halfToHours(r.second, 'Studying');
-        sl +=
-          halfToHours(r.first, 'Sleeping') + halfToHours(r.second, 'Sleeping');
-        w += halfToHours(r.first, 'Wasted') + halfToHours(r.second, 'Wasted');
-      });
-
-      // push dependent state from the same updated snapshot
-      setDailyData((p) => ({ ...p, [k]: { study: s, sleep: sl, wasted: w } }));
-      setWastedPatterns((p) => ({ ...p, [k]: autoCalcPatterns(k, next) }));
-
-      return next;
-    });
-  };
 
   // tick while running (resume automatically after reload)
   const [now, setNow] = useState(Date.now());
@@ -175,14 +337,13 @@ export const TimeStoreProvider = ({ children }) => {
     }
   }, [now, pomodoro.isRunning, pomodoro.isPaused, pomodoro.endAt]);
 
-  // persist pomodoro on every change
+  // persist pomodoro on every change (local-only concept)
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE.POMODORO, JSON.stringify(pomodoro));
     } catch {}
   }, [pomodoro]);
 
-  // actions
   const setPomodoroTime = ({ hours = 0, minutes = 0, task = '' }) => {
     const h = Math.max(0, Math.min(10, parseInt(hours, 10) || 0));
     const m = Math.max(0, Math.min(59, parseInt(minutes, 10) || 0));
@@ -252,83 +413,99 @@ export const TimeStoreProvider = ({ children }) => {
     };
   }, [pomodoro, timeLeftMs]);
 
-  const handleInputChange = (k, kind, val) => {
-    const d = dailyData[k] || { study: 0, sleep: 0, wasted: 0 };
-    const v = parseFloat(val) || 0;
-    const n = { ...d, [kind]: v };
-    setDailyData((prev) => ({ ...prev, [k]: n }));
-  };
-  const addPattern = (k, txt) => {
-    if (!txt) return;
-    setWastedPatterns((p) => {
-      const a = p[k] ? [...p[k]] : [];
-      a.push(txt);
-      return { ...p, [k]: a };
+  // -----------------------
+  // LIVE read (subscribe in LIVE mode only)
+  // -----------------------
+  useEffect(() => {
+    if (isLocal) return; // no live listener in local mode
+
+    // derive doc id from SOURCE string just in case
+    const docId =
+      (dataSource && dataSource.startsWith('live:')
+        ? dataSource.slice(5)
+        : LIVE.DOC_ID) || LIVE.DOC_ID;
+
+    const liveRef = doc(db, 'timetracker', docId);
+    const unsub = onSnapshot(liveRef, (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data() || {};
+      setDailyData(d.dailyData || {});
+      setHourlyData(d.hourlyData || {});
+      setWastedPatterns(d.wastedPatterns || {});
+      setReflections(d.reflections || {});
     });
-  };
-  const removePattern = (k, i) =>
-    setWastedPatterns((p) => {
-      const a = p[k] ? [...p[k]] : [];
-      a.splice(i, 1);
-      return { ...p, [k]: a };
+
+    return () => unsub();
+  }, [isLocal, dataSource]);
+
+  // -----------------------
+  // Auth role resolve
+  // -----------------------
+  useEffect(() => {
+    const off = onAuthStateChanged(auth, (user) => {
+      if (user?.uid === ADMIN.UID) setRole('admin');
+      else setRole('viewer');
     });
-  const exportAll = () => {
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          { dailyData, hourlyData, wastedPatterns, reflections },
-          null,
-          2
-        ),
-      ],
-      { type: 'application/json' }
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `time-tracker-backup-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-  // const importAll = (obj) => {
-  //   setDailyData(obj.dailyData || {});
-  //   setHourlyData(obj.hourlyData || {});
-  //   setWastedPatterns(obj.wastedPatterns || {});
-  //   setReflections(obj.reflections || {});
-  // };
+    return () => off();
+  }, []);
 
-  function importAll(obj) {
-    try {
-      let daily = obj?.dailyData || {};
-      const hourly = obj?.hourlyData || {};
-      let patterns = obj?.wastedPatterns || {};
-      const refl = obj?.reflections || {};
+  // -----------------------
+  // Admin publish: push LOCAL edits to LIVE (debounced)
+  // Only if: role === 'admin' AND isLocal === true AND UID matches
+  // -----------------------
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!isLocal) return; // only publish while editing private copy
+    if (role !== 'admin') return;
 
-      if (Object.keys(hourly).length > 0) {
-        const rec = recomputeFromHourly(hourly);
-        daily = { ...daily, ...rec.daily };
-        patterns = { ...patterns, ...rec.patterns };
-      }
+    const uid = auth.currentUser?.uid;
+    if (uid !== ADMIN.UID) return; // double-guard
 
-      setDailyData(daily);
-      setHourlyData(hourly);
-      setWastedPatterns(patterns);
-      setReflections(refl);
+    const payload = {
+      dailyData,
+      hourlyData,
+      wastedPatterns,
+      reflections,
+      updatedAt: Date.now(),
+      lastWriter: uid || 'unknown',
+    };
 
-      persistAll({ daily, hourly, patterns, reflections: refl });
-    } catch (err) {
-      console.error('Import failed', err);
-      alert('Import failed: invalid JSON');
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const liveDoc = doc(db, 'timetracker', LIVE.DOC_ID);
+      setDoc(liveDoc, payload, { merge: true }).catch(console.error);
+    }, 600);
+
+    return () => clearTimeout(saveTimerRef.current);
+  }, [role, isLocal, dailyData, hourlyData, wastedPatterns, reflections]);
+
+  // -----------------------
+  // Auth helpers
+  // -----------------------
+  const loginAsSaiteja = async () => {
+    const u = await signInGoogle();
+    if (u?.uid === ADMIN.UID) setRole('admin');
+    else {
+      alert('You are not the admin; staying in read-only.');
+      setRole('viewer');
     }
-  }
+  };
 
+  const viewSaitejaLive = () => setRole('viewer');
+
+  // -----------------------
+  // Context value
+  // -----------------------
   const ctx = {
+    // view/date
     selectedDate,
     setSelectedDate,
     currentMonth,
     setCurrentMonth,
     reportRange,
     setReportRange,
+
+    // data
     dailyData,
     setDailyData,
     hourlyData,
@@ -337,22 +514,39 @@ export const TimeStoreProvider = ({ children }) => {
     setWastedPatterns,
     reflections,
     setReflections,
+
+    // derived
     dateKey,
     derived,
+
+    // actions
     setHalfActivity,
     handleInputChange,
     addPattern,
     removePattern,
     exportAll,
     importAll,
+
+    // utils
     formatHours,
     countMiscHours,
     MAIN_ACTIVITIES,
+
+    // pomodoro surface + actions
     pomodoro: pomodoroView,
     setPomodoroTime,
     togglePausePomodoro,
     resetPomodoro,
+
+    // roles & data source
+    role,
+    isReadOnly,
+    loginAsSaiteja,
+    viewSaitejaLive,
+    dataSource,
   };
+
   return <Ctx.Provider value={ctx}>{children}</Ctx.Provider>;
 };
+
 export const useTimeStore = () => useContext(Ctx);
