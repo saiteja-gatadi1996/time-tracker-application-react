@@ -36,6 +36,10 @@ import {
 
 const Ctx = createContext(null);
 
+const isEmptyObj = (o) =>
+  !o || (typeof o === 'object' && Object.keys(o).length === 0);
+const hashPayload = (p) => JSON.stringify(p);
+
 export const TimeStoreProvider = ({ children }) => {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
@@ -419,24 +423,51 @@ export const TimeStoreProvider = ({ children }) => {
   useEffect(() => {
     if (isLocal) return; // no live listener in local mode
 
-    // derive doc id from SOURCE string just in case
-    const docId =
-      (dataSource && dataSource.startsWith('live:')
-        ? dataSource.slice(5)
-        : LIVE.DOC_ID) || LIVE.DOC_ID;
-
-    const liveRef = doc(db, 'timetracker', docId);
+    const liveRef = doc(db, 'timetracker', LIVE.DOC_ID);
     const unsub = onSnapshot(liveRef, (snap) => {
       if (!snap.exists()) return;
       const d = snap.data() || {};
+
+      // set state for read-only viewing
       setDailyData(d.dailyData || {});
       setHourlyData(d.hourlyData || {});
       setWastedPatterns(d.wastedPatterns || {});
       setReflections(d.reflections || {});
+
+      // cache for seeding + anti-wipe hashing
+      liveSnapshotRef.current = d;
+      liveHashRef.current = hashPayload({
+        dailyData: d.dailyData || {},
+        hourlyData: d.hourlyData || {},
+        wastedPatterns: d.wastedPatterns || {},
+        reflections: d.reflections || {},
+      });
     });
 
     return () => unsub();
-  }, [isLocal, dataSource]);
+  }, [isLocal, db]);
+
+  // If admin switches/lands in LOCAL and local is empty, seed from latest LIVE snapshot
+  useEffect(() => {
+    if (role !== 'admin' || !isLocal) return;
+
+    const localEmpty = [
+      dailyData,
+      hourlyData,
+      wastedPatterns,
+      reflections,
+    ].every(isEmptyObj);
+    if (localEmpty && liveSnapshotRef.current) {
+      // prevent the seed from publishing back immediately
+      skipNextPublishRef.current = true;
+
+      const d = liveSnapshotRef.current;
+      setDailyData(d.dailyData || {});
+      setHourlyData(d.hourlyData || {});
+      setWastedPatterns(d.wastedPatterns || {});
+      setReflections(d.reflections || {});
+    }
+  }, [role, isLocal]); // don't depend on data objects — we only care about the mode/role
 
   // -----------------------
   // Auth role resolve
@@ -453,31 +484,56 @@ export const TimeStoreProvider = ({ children }) => {
   // Admin publish: push LOCAL edits to LIVE (debounced)
   // Only if: role === 'admin' AND isLocal === true AND UID matches
   // -----------------------
-  const saveTimerRef = useRef(null);
+  const liveSnapshotRef = useRef(null);
+  const liveHashRef = useRef('');
+  const skipNextPublishRef = useRef(false);
+  const saveTimerRef = useRef(null); // if you don't already have this ref here
+
+  // 📝 Publish admin's PRIVATE edits to LIVE (debounced & guarded)
   useEffect(() => {
-    if (!isLocal) return; // only publish while editing private copy
-    if (role !== 'admin') return;
+    if (role !== 'admin') return; // only admin can publish
+    if (!isLocal) return; // publish only from local/private copy
 
-    const uid = auth.currentUser?.uid;
-    if (uid !== ADMIN.UID) return; // double-guard
+    // skip one publish tick right after seeding local from live
+    if (skipNextPublishRef.current) {
+      skipNextPublishRef.current = false;
+      return;
+    }
 
-    const payload = {
+    // never publish an empty payload (prevents accidental wipes)
+    const isEmpty = [dailyData, hourlyData, wastedPatterns, reflections].every(
+      isEmptyObj
+    );
+    if (isEmpty) return;
+
+    // if local equals live (hash), don't publish
+    const currHash = hashPayload({
       dailyData,
       hourlyData,
       wastedPatterns,
       reflections,
-      updatedAt: Date.now(),
-      lastWriter: uid || 'unknown',
-    };
+    });
+    if (currHash === liveHashRef.current) return;
 
+    // debounce write
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const liveDoc = doc(db, 'timetracker', LIVE.DOC_ID);
-      setDoc(liveDoc, payload, { merge: true }).catch(console.error);
+      setDoc(
+        liveDoc,
+        {
+          dailyData,
+          hourlyData,
+          wastedPatterns,
+          reflections,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      ).catch(console.error);
     }, 600);
 
     return () => clearTimeout(saveTimerRef.current);
-  }, [role, isLocal, dailyData, hourlyData, wastedPatterns, reflections]);
+  }, [role, isLocal, dailyData, hourlyData, wastedPatterns, reflections, db]);
 
   // -----------------------
   // Auth helpers

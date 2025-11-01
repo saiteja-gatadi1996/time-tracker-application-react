@@ -1,3 +1,4 @@
+/* ========== RESET & BASE ========== */
 * {
  margin: 0;
  padding: 0;
@@ -16,12 +17,23 @@ body {
  padding: 20px;
 }
 
+/* iOS safe-area guards */
+@supports (padding: max(0px)) {
+ .container {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+ }
+}
+
+/* ========== HEADER ========== */
 .header {
  background: white;
  border-radius: 8px;
  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
  padding: 24px;
  margin-bottom: 24px;
+ padding-left: clamp(12px, 4vw, 24px);
+ padding-right: clamp(12px, 4vw, 24px);
 }
 
 .title {
@@ -30,6 +42,54 @@ body {
  margin-bottom: 16px;
 }
 
+/* Top row: title left, auth right */
+.header-bar {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
+ flex-wrap: wrap;
+ /* wrap gracefully on small screens */
+ width: 100%;
+}
+
+/* Auth area */
+.auth-box {
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ margin-left: auto;
+ max-width: 65vw;
+}
+
+.auth-id {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ font-size: 13px;
+ color: #6b7280;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+
+.auth-id strong {
+ overflow: hidden;
+ text-overflow: ellipsis;
+ max-width: 48vw;
+ display: inline-block;
+}
+
+.auth-avatar {
+ width: 28px;
+ height: 28px;
+ border-radius: 9999px;
+ object-fit: cover;
+ border: 1px solid #e5e7eb;
+ background: #fff;
+}
+
+/* ========== CONTROLS & BUTTONS ========== */
 .button-group {
  display: flex;
  flex-wrap: wrap;
@@ -46,6 +106,8 @@ body {
  font-weight: 500;
  background: #f3f4f6;
  color: #374151;
+ min-height: 44px;
+ /* finger-friendly */
 }
 
 .button:hover {
@@ -57,6 +119,7 @@ body {
  color: white;
 }
 
+/* ========== LAYOUT ========== */
 .grid-container {
  display: grid;
  grid-template-columns: 4fr 2fr;
@@ -70,11 +133,18 @@ body {
  padding: 24px;
 }
 
+/* ========== CARD HEADERS & TITLES ========== */
 .card-header {
  display: flex;
  justify-content: space-between;
  align-items: center;
  margin-bottom: 16px;
+ flex-wrap: wrap;
+ /* allow wrapping on small screens */
+ row-gap: 8px;
+ /* vertical gap when wrapped */
+ overflow: visible;
+ /* ensure children aren’t clipped */
 }
 
 .card-title {
@@ -89,6 +159,30 @@ body {
  margin-bottom: 15px;
 }
 
+/* Nav buttons next to titles (e.g., Monthly arrows) */
+.nav-buttons {
+ display: flex;
+ gap: 8px;
+ flex: 0 0 auto;
+ /* don’t shrink out of view */
+}
+
+.icon-button {
+ padding: 12px;
+ background: #cdeaf4;
+ border: none;
+ border-radius: 8px;
+ cursor: pointer;
+ font-size: 20px;
+ flex: 0 0 auto;
+ /* always stay visible */
+}
+
+.icon-button:hover {
+ background: #f3f4f6;
+}
+
+/* ========== CALENDAR ========== */
 .calendar-grid {
  display: grid;
  grid-template-columns: repeat(7, 1fr);
@@ -130,6 +224,7 @@ body {
  background: #f0fdf4;
 }
 
+/* ========== FORMS ========== */
 .form-group {
  margin-bottom: 16px;
 }
@@ -161,12 +256,15 @@ body {
 .input-group {
  display: flex;
  gap: 8px;
+ flex-wrap: wrap;
 }
 
 .input-group .input {
- flex: 1;
+ flex: 1 1 140px;
+ min-width: 0;
 }
 
+/* Pattern chips */
 .pattern-chip {
  display: inline-flex;
  align-items: center;
@@ -187,6 +285,7 @@ body {
  cursor: pointer;
 }
 
+/* ========== STATS (rock emoji cards) ========== */
 .stats-grid {
  display: grid;
  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -197,6 +296,7 @@ body {
 .stat-card {
  padding: 16px;
  border-radius: 8px;
+ min-width: 0;
 }
 
 .stat-card.blue {
@@ -222,6 +322,7 @@ body {
 .stat-value {
  font-size: 24px;
  font-weight: bold;
+ word-break: break-word;
 }
 
 .stat-value.blue {
@@ -241,24 +342,7 @@ body {
  height: 20px;
 }
 
-.nav-buttons {
- display: flex;
- gap: 8px;
-}
-
-.icon-button {
- padding: 12px;
- background: #cdeaf4;
- border: none;
- border-radius: 8px;
- cursor: pointer;
- font-size: 20px;
-}
-
-.icon-button:hover {
- background: #f3f4f6;
-}
-
+/* ========== INFO & TABLES ========== */
 .total-info {
  padding-top: 16px;
  border-top: 1px solid #e5e7eb;
@@ -337,6 +421,7 @@ td {
  z-index: 1;
 }
 
+/* ========== SELECTS & PILLS ========== */
 .activity-select {
  width: 100%;
  padding: 6px 8px;
@@ -349,12 +434,6 @@ td {
  font-weight: 500;
  cursor: pointer;
  appearance: none;
- -webkit-appearance: none;
- -moz-appearance: none;
- outline: none;
-}
-
-.activity-select:focus {
  outline: none;
 }
 
@@ -367,9 +446,8 @@ td {
 }
 
 .pill.blue {
- background: #eff6ff;
+ background: #b8eab8;
  color: #000;
- background-color: #b8eab8;
  border: none;
 }
 
@@ -388,6 +466,7 @@ td {
  color: #374151;
 }
 
+/* ========== HOURLY HEADERS ========== */
 #hourly-view h2,
 #hourly-view th {
  color: #000;
@@ -395,6 +474,17 @@ td {
  background-color: #f7f70a;
 }
 
+/* ================================
+   Hourly View — NO X-Scroll (Mobile)
+   ================================ */
+
+/* Keep normal, fixed table on desktop */
+#hourly-view .hourly-table {
+ table-layout: fixed;
+ width: 100%;
+}
+
+/* ========== POMODORO ========== */
 #pomodoro-view {
  background-color: rgb(186, 73, 73);
  min-height: 100vh;
@@ -474,44 +564,7 @@ td {
  font-size: 1.2em;
 }
 
-/* title + auth in one row */
-.header-bar {
- display: flex;
- align-items: center;
- justify-content: space-between;
- /* pushes auth to the right */
- gap: 12px;
- flex-wrap: wrap;
- /* graceful wrap on small screens */
-}
-
-/* auth UI on the right */
-.auth-box {
- display: flex;
- align-items: center;
- gap: 10px;
-}
-
-.auth-id {
- display: flex;
- align-items: center;
- gap: 8px;
- font-size: 13px;
- color: #6b7280;
- /* slate-500 */
-}
-
-.auth-avatar {
- width: 28px;
- height: 28px;
- border-radius: 9999px;
- object-fit: cover;
- border: 1px solid #e5e7eb;
- /* gray-200 */
- background: #fff;
-}
-
-/* When viewing LIVE, make grid inert but still visible */
+/* ========== READ-ONLY STATES ========== */
 .hourly-view.ro .button,
 .hourly-view.ro button,
 .hourly-view.ro select,
@@ -535,7 +588,6 @@ td {
 
 .input-view.ro button.button[disabled] {
  pointer-events: auto;
- /* so the tooltip still shows */
  cursor: not-allowed;
 }
 
@@ -548,7 +600,14 @@ textarea[readonly] {
  border: none;
 }
 
-@media (max-width:768px) {
+/* ========== RESPONSIVE ========== */
+@media (max-width: 1024px) and (min-width: 769px) {
+ .grid-container {
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+ }
+}
+
+@media (max-width: 768px) {
  .container {
   padding: 10px;
  }
@@ -599,13 +658,81 @@ textarea[readonly] {
   overflow-x: auto;
  }
 
- .input-group .input {
-  flex: .5;
+ /* Center ALL card titles on mobile */
+ .card-header .card-title {
+  margin: 0 auto 12px auto;
+  /* perfectly centered */
+  text-align: center;
+  max-width: 100%;
+ }
+
+ /* Move nav buttons under title & keep visible */
+ .card-header .nav-buttons {
+  width: 100%;
+  justify-content: space-between;
+  /* arrows at edges under the title */
+  gap: 16px;
+ }
+
+ /* Pills: stack vertically & full width on mobile */
+ .pill {
+  display: block;
+  /* stack */
+  width: 100%;
+  /* full width look */
+  text-align: center;
+  margin: 6px 0;
+ }
+
+ /* Auth box tweaks */
+ .auth-box .button {
+  white-space: nowrap;
+  margin-bottom: 5px;
+  font-size: 12px;
+  padding: 5px;
+  min-height: 18px;
+  width: 100px;
+ }
+
+}
+
+@media (max-width: 480px) {
+
+ /* Stats: a clean 2-column grid on tiny phones */
+ .stats-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+ }
+
+ /* Pomodoro timer scale down */
+ #pomodoro-view .timer {
+  font-size: 3.5em;
+ }
+
+ .title {
+  font-size: 22px;
  }
 }
 
-@media (max-width:1024px) and (min-width:769px) {
- .grid-container {
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+/* Slightly tighter cards on phones */
+@media (max-width: 768px) {
+ .card {
+  padding: 14px;
  }
+
+ .button {
+  font-size: 15px;
+ }
+
+ .input {
+  font-size: 15px;
+ }
+}
+
+/* Smooth horizontal scroll for wide tables */
+.hourly-table,
+.table-responsive {
+ display: block;
+ overflow-x: auto;
+ -webkit-overflow-scrolling: touch;
 }

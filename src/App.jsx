@@ -18,9 +18,12 @@ import { ADMIN, DS_KEY, SOURCE } from './utils/constants';
 
 export default function App() {
   const [view, setView] = useState('hourly');
-
   // auth
   const [user, setUser] = useState(null);
+  const qs = new URLSearchParams(window.location.search);
+  const allowAdminUI =
+    qs.get('admin') === '1' || (user && user.uid === ADMIN.UID);
+
   useEffect(() => {
     const off = onAuthStateChanged(auth, setUser);
     return () => off();
@@ -67,32 +70,35 @@ export default function App() {
             <div className='header-bar'>
               <h1 className='title'>⏰ Time Tracker Application</h1>
 
-              <div className='auth-box'>
-                {user ? (
-                  <>
-                    <div className='auth-id'>
-                      {user.photoURL ? (
+              {/* Auth (hidden for everyone unless ?admin=1 OR already signed-in as admin) */}
+              {allowAdminUI && (
+                <div className='auth-box'>
+                  {user && user.uid === ADMIN.UID ? (
+                    <>
+                      <span className='auth-id'>
                         <img
-                          src={user.photoURL}
-                          alt='avatar'
                           className='auth-avatar'
-                          referrerPolicy='no-referrer'
+                          src={user.photoURL || ''}
+                          alt=''
                         />
-                      ) : null}
-                      <span className='auth-text'>
                         Signed in as <strong>{user.email}</strong>
                       </span>
-                    </div>
-                    <button className='button' onClick={signOut}>
-                      Sign out
+                      <button
+                        className='button'
+                        onClick={async () =>
+                          (await import('firebase/auth')).signOut(auth)
+                        }
+                      >
+                        Sign out
+                      </button>
+                    </>
+                  ) : (
+                    <button className='button' onClick={signInGoogle}>
+                      Sign in (admin)
                     </button>
-                  </>
-                ) : (
-                  <button className='button' onClick={signIn}>
-                    Sign in with Google
-                  </button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Navigation */}
