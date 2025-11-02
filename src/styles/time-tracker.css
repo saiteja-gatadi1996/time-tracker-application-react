@@ -565,8 +565,7 @@ td {
 }
 
 /* ========== READ-ONLY STATES ========== */
-.hourly-view.ro .button,
-.hourly-view.ro button,
+.hourly-view.ro button:not(.icon-button),
 .hourly-view.ro select,
 .hourly-view.ro input[type="radio"],
 .hourly-view.ro .cell {
