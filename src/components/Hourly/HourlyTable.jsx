@@ -3,17 +3,43 @@ import { useTimeStore } from '../../store/useTimeStore';
 import { MAIN_ACTIVITIES, MISC_ACTIVITIES } from '../../utils/constants';
 import { getDateKey, hourLabel, isPast, timeRange } from '../../utils/date';
 import { halfToHours } from '../../utils/report';
+
+const WASTED_REASON_OPTIONS = [
+  'Using_Mobile',
+  'Watching_TV',
+  'ZeroClarity',
+  'Comfy_Zone',
+  'Distracted',
+  'Zero_Interest',
+  'Mindless_Scrolling',
+  'Entertainment',
+];
+
 export default function HourlyTable() {
-  const { selectedDate, hourlyData, setHalfActivity, dateKey } = useTimeStore();
+  const {
+    selectedDate,
+    hourlyData,
+    setHalfActivity,
+    dateKey,
+    setWastedReason,
+  } = useTimeStore();
+
   const [miscMenu, setMiscMenu] = useState({});
+
   const rows = useMemo(
     () =>
       hourlyData[dateKey] ||
-      Array.from({ length: 24 }, () => ({ first: null, second: null })),
+      Array.from({ length: 24 }, () => ({
+        first: null,
+        second: null,
+        wastedReason: null, // 🔹 default for new days
+      })),
     [hourlyData, dateKey]
   );
+
   const past = isPast(dateKey);
   const toggleKey = (h, half) => `${dateKey}|${h}|${half}`;
+
   const opts = (cur, key) => {
     const show = miscMenu[key] || (cur && cur.startsWith('MISC-'));
     return show
@@ -23,25 +49,20 @@ export default function HourlyTable() {
         ]
       : MAIN_ACTIVITIES.map((a) => ({ value: a, label: a }));
   };
+
   return (
-    <div
-      className='overflow-x-auto'
-      style={{
-        maxHeight: '60vh',
-        border: '1px solid #e5e7eb',
-        borderRadius: 8,
-      }}
-    >
+    <div className='overflow-x-auto hourly-table-wrapper'>
       <table className='hourly-table' style={{ width: '100%' }}>
         <thead>
           <tr>
             <th className='text-center' style={{ fontSize: 14 }}>
               Time
             </th>
-            <th className='text-center' style={{ fontSize: 14, width: 200 }}>
+            {/* 🔹 removed fixed width to let table auto-balance and reduce odd gap */}
+            <th className='text-center' style={{ fontSize: 14 }}>
               First Half
             </th>
-            <th className='text-center' style={{ fontSize: 14, width: 200 }}>
+            <th className='text-center' style={{ fontSize: 14 }}>
               Second Half
             </th>
             <th className='text-center' style={{ fontSize: 14 }}>
@@ -53,12 +74,16 @@ export default function HourlyTable() {
             <th className='text-center' style={{ fontSize: 14 }}>
               Wasted (hrs)
             </th>
+            <th className='text-center' style={{ fontSize: 14, minWidth: 180 }}>
+              Wasted Reason
+            </th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, h) => {
-            const keyF = toggleKey(h, 'first'),
-              keyS = toggleKey(h, 'second');
+            const keyF = toggleKey(h, 'first');
+            const keyS = toggleKey(h, 'second');
+
             const studied =
               halfToHours(r.first, 'Studying') +
               halfToHours(r.second, 'Studying');
@@ -67,6 +92,9 @@ export default function HourlyTable() {
               halfToHours(r.second, 'Sleeping');
             const wasted =
               halfToHours(r.first, 'Wasted') + halfToHours(r.second, 'Wasted');
+
+            const wastedReason = r.wastedReason || '';
+
             return (
               <tr key={`hr-${h}`}>
                 <td
@@ -75,6 +103,8 @@ export default function HourlyTable() {
                 >
                   {hourLabel(h)}
                 </td>
+
+                {/* FIRST HALF */}
                 <td
                   className='text-center'
                   style={{ backgroundColor: getBg(r.first) }}
@@ -104,6 +134,8 @@ export default function HourlyTable() {
                     {timeRange(h).first}
                   </div>
                 </td>
+
+                {/* SECOND HALF */}
                 <td
                   className='text-center'
                   style={{ backgroundColor: getBg(r.second) }}
@@ -133,6 +165,8 @@ export default function HourlyTable() {
                     {timeRange(h).second}
                   </div>
                 </td>
+
+                {/* STUDIED */}
                 <td
                   className='text-center'
                   style={{
@@ -141,12 +175,18 @@ export default function HourlyTable() {
                 >
                   {studied}
                 </td>
+
+                {/* SLEPT */}
                 <td
                   className='text-center'
-                  style={{ backgroundColor: slept > 0 ? '#add8e6' : undefined }}
+                  style={{
+                    backgroundColor: slept > 0 ? '#add8e6' : undefined,
+                  }}
                 >
                   {slept}
                 </td>
+
+                {/* WASTED HOURS */}
                 <td
                   className='text-center'
                   style={{
@@ -154,6 +194,33 @@ export default function HourlyTable() {
                   }}
                 >
                   {wasted}
+                </td>
+
+                <td
+                  className='text-center'
+                  style={{
+                    backgroundColor: wasted > 0 ? '#ffe4e1' : undefined,
+                  }}
+                >
+                  <select
+                    className='activity-select text-center wasted-reason-select'
+                    disabled={past}
+                    value={wastedReason}
+                    onChange={(e) =>
+                      setWastedReason(
+                        getDateKey(selectedDate),
+                        h,
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value=''>-- Select --</option>
+                    {WASTED_REASON_OPTIONS.map((reason) => (
+                      <option key={reason} value={reason}>
+                        {reason.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
                 </td>
               </tr>
             );
@@ -163,6 +230,7 @@ export default function HourlyTable() {
     </div>
   );
 }
+
 const renderOptions = (arr, cur) => {
   const isMisc = arr[0]?.value === 'Back';
   const ph = isMisc ? '-- Select MISC --' : '-- Select --';
@@ -182,6 +250,7 @@ const renderOptions = (arr, cur) => {
     )),
   ];
 };
+
 const getBg = (act) =>
   ({ Studying: '#b8eab8', Sleeping: '#add8e6', Wasted: '#ffcccb' }[act] ||
   (act?.startsWith('MISC-') ? '#fff5c0' : ''));

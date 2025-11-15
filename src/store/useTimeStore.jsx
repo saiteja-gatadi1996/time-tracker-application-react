@@ -161,6 +161,43 @@ export const TimeStoreProvider = ({ children }) => {
   // -----------------------
   // Editing helpers (blocked in LIVE/read-only)
   // -----------------------
+
+  const setWastedReason = (k, h, reason) => {
+    if (isReadOnly)
+      return alert(
+        'Read-only in LIVE mode. Switch to “Your Tracker (private)” to edit.'
+      );
+    if (isPast(k)) return alert('Cannot edit past days.');
+
+    setHourlyData((prev) => {
+      // Normalize day shape so every row has wastedReason
+      const day = prev[k]
+        ? prev[k].map((row) => ({
+            first: row.first ?? null,
+            second: row.second ?? null,
+            wastedReason: row.wastedReason ?? null,
+          }))
+        : Array.from({ length: 24 }, () => ({
+            first: null,
+            second: null,
+            wastedReason: null,
+          }));
+
+      // 🔹 Empty string means "clear" → store as null
+      const normalized = reason === '' || reason === undefined ? null : reason;
+
+      const row = { ...day[h], wastedReason: normalized };
+      day[h] = row;
+
+      const next = { ...prev, [k]: day };
+
+      // wasted patterns depend on hourlyData
+      setWastedPatterns((p) => ({ ...p, [k]: autoCalcPatterns(k, next) }));
+
+      return next;
+    });
+  };
+
   const setHalfActivity = (k, h, half, value) => {
     if (isReadOnly)
       return alert(
@@ -171,7 +208,11 @@ export const TimeStoreProvider = ({ children }) => {
     setHourlyData((prev) => {
       const day = prev[k]
         ? [...prev[k]]
-        : Array.from({ length: 24 }, () => ({ first: null, second: null }));
+        : Array.from({ length: 24 }, () => ({
+            first: null,
+            second: null,
+            wastedReason: null,
+          }));
 
       const row = { ...day[h] };
       if (value === 'Back') row[half] = null;
@@ -196,6 +237,7 @@ export const TimeStoreProvider = ({ children }) => {
 
       setDailyData((p) => ({ ...p, [k]: { study: s, sleep: sl, wasted: w } }));
       setWastedPatterns((p) => ({ ...p, [k]: autoCalcPatterns(k, next) }));
+
       return next;
     });
   };
@@ -577,6 +619,7 @@ export const TimeStoreProvider = ({ children }) => {
 
     // actions
     setHalfActivity,
+    setWastedReason,
     handleInputChange,
     addPattern,
     removePattern,

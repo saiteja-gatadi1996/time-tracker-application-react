@@ -24,7 +24,7 @@ export default function ReflectionCard() {
             setReflections((prev) => ({ ...prev, [dateKey]: text }));
           }}
           className={`input ${isReadOnly} ? 'is-ro' : ''`}
-          style={{ width: '100%', minHeight: 220 }}
+          style={{ width: '100%', minHeight: 250 }}
         />
       </div>
       <div className='form-group'>
