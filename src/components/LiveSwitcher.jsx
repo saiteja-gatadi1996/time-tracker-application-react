@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { STORAGE, DS_KEY, SOURCE } from '../utils/constants';
 
-export default function LiveSwitcher() {
+export default function LiveSwitcher({ isAdmin }) {
   const readSource = () => localStorage.getItem(DS_KEY) || SOURCE.LIVE;
   const [source, setSource] = useState(readSource);
 
   useEffect(() => {
-    // Default new visitors to LIVE
     if (!localStorage.getItem(DS_KEY)) {
       localStorage.setItem(DS_KEY, SOURCE.LIVE);
     }
@@ -45,6 +44,35 @@ export default function LiveSwitcher() {
 
   const isLocal = source === SOURCE.LOCAL;
 
+  // 👑 ADMIN VIEW
+  // - Only Your Tracker is meaningful
+  // - Saiteja LIVE is just a label explaining what viewers see
+  if (isAdmin) {
+    return (
+      <div
+        className='total-info'
+        style={{
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          marginTop: 8,
+        }}
+      >
+        <span style={{ fontSize: 13, color: '#6b7280' }}>Data source:</span>
+
+        <button
+          className='button active'
+          disabled
+          title='This is your Firestore-backed tracker; edits here sync across devices and power Saiteja · LIVE for others.'
+        >
+          Your Tracker (admin · cloud)
+        </button>
+      </div>
+    );
+  }
+
+  // 👥 NON-ADMIN VIEW (unchanged logic)
   return (
     <div
       className='total-info'

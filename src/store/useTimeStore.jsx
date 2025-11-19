@@ -58,8 +58,12 @@ export const TimeStoreProvider = ({ children }) => {
     return src;
   });
 
-  const isLocal = dataSource === SOURCE.LOCAL;
-  const isReadOnly = !isLocal; // LIVE is always read-only in the UI
+  // 🔐 Admin: always treated as "local" (editable tracker, synced to Firestore)
+  // Viewers: same behavior as before
+  const isLocal = role === 'admin' ? true : dataSource === SOURCE.LOCAL;
+
+  // Admin is never read-only; viewers are read-only in LIVE mode
+  const isReadOnly = role === 'admin' ? false : !isLocal;
 
   const [dailyData, setDailyData] = useState(() => {
     try {
@@ -104,7 +108,7 @@ export const TimeStoreProvider = ({ children }) => {
 
   // When entering LOCAL mode, hydrate state from localStorage
   useEffect(() => {
-    if (!isLocal) return;
+    if (!isLocal || role === 'admin') return; // admin will be fed by Firestore
     try {
       setDailyData(JSON.parse(localStorage.getItem(STORAGE.DAILY)) || {});
       setHourlyData(JSON.parse(localStorage.getItem(STORAGE.HOURLY)) || {});
@@ -115,7 +119,7 @@ export const TimeStoreProvider = ({ children }) => {
         JSON.parse(localStorage.getItem(STORAGE.REFLECTIONS)) || {}
       );
     } catch {}
-  }, [isLocal]);
+  }, [isLocal, role]);
 
   // Persist LOCAL changes to localStorage
   useEffect(() => {
@@ -462,21 +466,27 @@ export const TimeStoreProvider = ({ children }) => {
   // -----------------------
   // LIVE read (subscribe in LIVE mode only)
   // -----------------------
+  // -----------------------
+  // LIVE read: subscribe to Firestore
+  // - Admin: ALWAYS (Your Tracker is Firestore-backed)
+  // - Viewer: only when in LIVE mode
+  // -----------------------
   useEffect(() => {
-    if (isLocal) return; // no live listener in local mode
+    const shouldListen = role === 'admin' || !isLocal;
+    if (!shouldListen) return;
 
     const liveRef = doc(db, 'timetracker', LIVE.DOC_ID);
     const unsub = onSnapshot(liveRef, (snap) => {
       if (!snap.exists()) return;
       const d = snap.data() || {};
 
-      // set state for read-only viewing
+      // This is the single source of truth from Firestore
       setDailyData(d.dailyData || {});
       setHourlyData(d.hourlyData || {});
       setWastedPatterns(d.wastedPatterns || {});
       setReflections(d.reflections || {});
 
-      // cache for seeding + anti-wipe hashing
+      // Cache for publish guard
       liveSnapshotRef.current = d;
       liveHashRef.current = hashPayload({
         dailyData: d.dailyData || {},
@@ -487,7 +497,7 @@ export const TimeStoreProvider = ({ children }) => {
     });
 
     return () => unsub();
-  }, [isLocal, db]);
+  }, [role, isLocal, db]);
 
   // If admin switches/lands in LOCAL and local is empty, seed from latest LIVE snapshot
   useEffect(() => {
@@ -512,12 +522,25 @@ export const TimeStoreProvider = ({ children }) => {
   }, [role, isLocal]); // don't depend on data objects — we only care about the mode/role
 
   // -----------------------
+  // LIVE snapshot cache + publish guards
+  // -----------------------
+  const liveSnapshotRef = useRef(null);
+  const liveHashRef = useRef('');
+  const skipNextPublishRef = useRef(false);
+  const saveTimerRef = useRef(null);
+
+  // -----------------------
   // Auth role resolve
   // -----------------------
   useEffect(() => {
     const off = onAuthStateChanged(auth, (user) => {
-      if (user?.uid === ADMIN.UID) setRole('admin');
-      else setRole('viewer');
+      if (user?.uid === ADMIN.UID) {
+        setRole('admin');
+        // 🛡️ On new login, don't immediately publish whatever is in local state
+        skipNextPublishRef.current = true;
+      } else {
+        setRole('viewer');
+      }
     });
     return () => off();
   }, []);
@@ -526,17 +549,13 @@ export const TimeStoreProvider = ({ children }) => {
   // Admin publish: push LOCAL edits to LIVE (debounced)
   // Only if: role === 'admin' AND isLocal === true AND UID matches
   // -----------------------
-  const liveSnapshotRef = useRef(null);
-  const liveHashRef = useRef('');
-  const skipNextPublishRef = useRef(false);
-  const saveTimerRef = useRef(null); // if you don't already have this ref here
 
   // 📝 Publish admin's PRIVATE edits to LIVE (debounced & guarded)
   useEffect(() => {
     if (role !== 'admin') return; // only admin can publish
-    if (!isLocal) return; // publish only from local/private copy
+    if (!isLocal) return; // only from admin's editable tracker
 
-    // skip one publish tick right after seeding local from live
+    // 🚫 Skip the first publish tick right after login / seeding
     if (skipNextPublishRef.current) {
       skipNextPublishRef.current = false;
       return;
@@ -548,16 +567,14 @@ export const TimeStoreProvider = ({ children }) => {
     );
     if (isEmpty) return;
 
-    // if local equals live (hash), don't publish
     const currHash = hashPayload({
       dailyData,
       hourlyData,
       wastedPatterns,
       reflections,
     });
-    if (currHash === liveHashRef.current) return;
+    if (currHash === liveHashRef.current) return; // already in sync with server
 
-    // debounce write
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const liveDoc = doc(db, 'timetracker', LIVE.DOC_ID);

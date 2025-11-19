@@ -46,12 +46,12 @@ export default function App() {
     };
   }, []);
 
-  const isLive = source !== SOURCE.LOCAL;
+  const isLive = isAdmin ? false : source !== SOURCE.LOCAL;
 
   const bannerText = isLive
-    ? isAdmin
-      ? 'Saiteja · LIVE (you publish by editing your private copy)'
-      : 'Saiteja · LIVE (read-only)'
+    ? 'Saiteja · LIVE (read-only)'
+    : isAdmin
+    ? 'Your Tracker (admin · cloud-synced across devices)'
     : 'Your Tracker (private on this device)';
 
   // --- Auth handlers ---
@@ -138,7 +138,7 @@ export default function App() {
             <NavBar view={view} setView={setView} />
 
             {/* Data Source switcher (Local vs LIVE) */}
-            <LiveSwitcher />
+            <LiveSwitcher isAdmin={isAdmin} />
 
             {/* Mode banner */}
             <div
@@ -153,7 +153,7 @@ export default function App() {
               }}
             >
               Viewing: <strong>{bannerText}</strong>
-              {isLive && (
+              {isLive && !isAdmin && (
                 <span style={{ marginLeft: 8 }}>
                   🔒 read-only UI; edits blocked
                 </span>
