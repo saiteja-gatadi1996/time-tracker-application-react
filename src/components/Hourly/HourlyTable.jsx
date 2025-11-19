@@ -32,7 +32,7 @@ export default function HourlyTable() {
       Array.from({ length: 24 }, () => ({
         first: null,
         second: null,
-        wastedReason: null, // 🔹 default for new days
+        wastedReason: null,
       })),
     [hourlyData, dateKey]
   );
@@ -58,11 +58,10 @@ export default function HourlyTable() {
             <th className='text-center' style={{ fontSize: 14 }}>
               Time
             </th>
-            {/* 🔹 removed fixed width to let table auto-balance and reduce odd gap */}
-            <th className='text-center' style={{ fontSize: 14 }}>
+            <th className='text-center' style={{ fontSize: 14, minWidth: 140 }}>
               First Half
             </th>
-            <th className='text-center' style={{ fontSize: 14 }}>
+            <th className='text-center' style={{ fontSize: 14, minWidth: 140 }}>
               Second Half
             </th>
             <th className='text-center' style={{ fontSize: 14 }}>
@@ -74,7 +73,7 @@ export default function HourlyTable() {
             <th className='text-center' style={{ fontSize: 14 }}>
               Wasted (hrs)
             </th>
-            <th className='text-center' style={{ fontSize: 14, minWidth: 180 }}>
+            <th className='text-center' style={{ fontSize: 14, minWidth: 120 }}>
               Wasted Reason
             </th>
           </tr>
@@ -94,6 +93,9 @@ export default function HourlyTable() {
               halfToHours(r.first, 'Wasted') + halfToHours(r.second, 'Wasted');
 
             const wastedReason = r.wastedReason || '';
+            const hasWasted = r.first === 'Wasted' || r.second === 'Wasted';
+            const wastedReasonDisabled = past || !hasWasted;
+            const dateKeyForRow = getDateKey(selectedDate);
 
             return (
               <tr key={`hr-${h}`}>
@@ -115,17 +117,33 @@ export default function HourlyTable() {
                     value={r.first || ''}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === 'MISC')
+                      if (v === 'MISC') {
                         setMiscMenu((m) => ({ ...m, [keyF]: true }));
-                      else
-                        setHalfActivity(
-                          getDateKey(selectedDate),
-                          h,
-                          'first',
-                          v
-                        );
-                      if (v === 'Back')
+                        return;
+                      }
+
+                      if (v === 'Back') {
+                        // clearing first-half
                         setMiscMenu((m) => ({ ...m, [keyF]: false }));
+                        setHalfActivity(dateKeyForRow, h, 'first', v);
+                        // after clearing, if no halves are Wasted → clear reason
+                        const willHaveWasted =
+                          null === 'Wasted' || r.second === 'Wasted';
+                        if (!willHaveWasted && r.wastedReason) {
+                          setWastedReason(dateKeyForRow, h, '');
+                        }
+                        return;
+                      }
+
+                      // normal flow
+                      setHalfActivity(dateKeyForRow, h, 'first', v);
+
+                      // 🧹 if after this change both halves are NOT 'Wasted', clear reason
+                      const willHaveWasted =
+                        v === 'Wasted' || r.second === 'Wasted';
+                      if (!willHaveWasted && r.wastedReason) {
+                        setWastedReason(dateKeyForRow, h, '');
+                      }
                     }}
                   >
                     {renderOptions(opts(r.first, keyF), r.first)}
@@ -146,17 +164,31 @@ export default function HourlyTable() {
                     value={r.second || ''}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === 'MISC')
+
+                      if (v === 'MISC') {
                         setMiscMenu((m) => ({ ...m, [keyS]: true }));
-                      else
-                        setHalfActivity(
-                          getDateKey(selectedDate),
-                          h,
-                          'second',
-                          v
-                        );
-                      if (v === 'Back')
+                        return;
+                      }
+
+                      if (v === 'Back') {
+                        // clearing second-half
                         setMiscMenu((m) => ({ ...m, [keyS]: false }));
+                        setHalfActivity(dateKeyForRow, h, 'second', v);
+                        const willHaveWasted =
+                          r.first === 'Wasted' || null === 'Wasted';
+                        if (!willHaveWasted && r.wastedReason) {
+                          setWastedReason(dateKeyForRow, h, '');
+                        }
+                        return;
+                      }
+
+                      setHalfActivity(dateKeyForRow, h, 'second', v);
+
+                      const willHaveWasted =
+                        r.first === 'Wasted' || v === 'Wasted';
+                      if (!willHaveWasted && r.wastedReason) {
+                        setWastedReason(dateKeyForRow, h, '');
+                      }
                     }}
                   >
                     {renderOptions(opts(r.second, keyS), r.second)}
@@ -196,6 +228,7 @@ export default function HourlyTable() {
                   {wasted}
                 </td>
 
+                {/* WASTED REASON */}
                 <td
                   className='text-center'
                   style={{
@@ -204,14 +237,11 @@ export default function HourlyTable() {
                 >
                   <select
                     className='activity-select text-center wasted-reason-select'
-                    disabled={past}
+                    // 1️⃣ Disabled if no wasted in this hour OR past date
+                    disabled={wastedReasonDisabled}
                     value={wastedReason}
                     onChange={(e) =>
-                      setWastedReason(
-                        getDateKey(selectedDate),
-                        h,
-                        e.target.value
-                      )
+                      setWastedReason(dateKeyForRow, h, e.target.value)
                     }
                   >
                     <option value=''>-- Select --</option>
