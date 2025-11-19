@@ -111,7 +111,7 @@ export default function App() {
                   </>
                 ) : (
                   <button className='button' onClick={signIn}>
-                    Sign in with Google
+                    Sign in with Google (Admin Only)
                   </button>
                 )}
               </div>
