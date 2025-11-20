@@ -85,8 +85,12 @@ export default function App() {
   return (
     <TimeStoreProvider>
       <PomodoroProvider>
-        <div className='container'>
-          <header className='header'>
+        <div
+          className={`container ${view === 'hourly' ? 'hourly-layout' : ''}`}
+        >
+          <header
+            className={`header ${view === 'hourly' ? 'hourly-header' : ''}`}
+          >
             {/* TOP BAR: title left, auth right */}
             <div className='header-bar'>
               <h1 className='title'>⏰ Time Tracker Application</h1>
