@@ -72,7 +72,7 @@ export default function YearlyView() {
       </div>
 
       <div className='overflow-x-auto'>
-        <table>
+        <table className='yearly-view'>
           <thead>
             <tr>
               <th>Month</th>
