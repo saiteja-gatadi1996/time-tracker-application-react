@@ -802,7 +802,7 @@ textarea[readonly] {
 /* Tiny phones: scale down the hourly view slightly */
 @media (max-width: 480px) {
    .hourly-view {
-      transform: scale(0.54);
+      transform: scale(0.525);
       transform-origin: top left;
    }
 }
