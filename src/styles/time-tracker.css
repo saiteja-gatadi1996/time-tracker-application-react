@@ -643,6 +643,13 @@ textarea[readonly] {
 @media (max-width: 768px) {
    .container {
       padding: 10px;
+      max-height: 100vh;
+   }
+
+   /* Very important: header must not be wider than the viewport */
+   .container.hourly-layout .header.hourly-header {
+      width: 100%;
+      max-width: 100%;
    }
 
    .weekly-breakdown {
@@ -724,7 +731,6 @@ textarea[readonly] {
       font-size: 12px;
       padding: 5px;
       min-height: 18px;
-      width: 100px;
    }
 
 }
@@ -793,13 +799,10 @@ textarea[readonly] {
    overflow-x: auto;
 }
 
-/* On Hourly page, desktop only, make header same width
-   as the hourly card (empirically ~666px for your layout) */
-@media (min-width: 50px) {
-   .container.hourly-layout .header.hourly-header {
-      min-width: 666px;
-      margin-left: 0;
-      margin-right: auto;
-      /* stick to left like the card */
+/* Tiny phones: scale down the hourly view slightly */
+@media (max-width: 480px) {
+   .hourly-view {
+      transform: scale(0.54);
+      transform-origin: top left;
    }
 }
