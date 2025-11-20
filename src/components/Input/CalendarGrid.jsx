@@ -1,29 +1,47 @@
 import React, { useMemo } from 'react';
 import { useTimeStore } from '../../store/useTimeStore';
 import { getDateKey, isTodayKey } from '../../utils/date';
+
 export default function CalendarGrid() {
   const { currentMonth, dailyData, selectedDate, setSelectedDate } =
     useTimeStore();
+
   const cells = useMemo(() => {
-    const y = currentMonth.getFullYear(),
-      m = currentMonth.getMonth();
-    const first = new Date(y, m, 1).getDay(),
-      dim = new Date(y, m + 1, 0).getDate();
+    const y = currentMonth.getFullYear();
+    const m = currentMonth.getMonth();
+    const first = new Date(y, m, 1).getDay();
+    const dim = new Date(y, m + 1, 0).getDate();
     const arr = [];
-    for (let i = 0; i < first; i++) arr.push({ empty: true, key: `e-${i}` });
+
+    // leading blanks
+    for (let i = 0; i < first; i++) {
+      arr.push({ empty: true, key: `e-${i}` });
+    }
+
+    // days
     for (let d = 1; d <= dim; d++) {
       const k = getDateKey(new Date(y, m, d));
+      const dayData = dailyData[k];
+
+      const total = dayData
+        ? (dayData.study || 0) + (dayData.sleep || 0) + (dayData.wasted || 0)
+        : 0;
+
+      const has = total > 0; // ✅ only mark as tracked if > 0
+
       arr.push({
         day: d,
         k,
-        has: !!dailyData[k],
+        has,
         sel: k === getDateKey(selectedDate),
         today: isTodayKey(k),
         key: `${y}-${m + 1}-${d}`,
       });
     }
+
     return arr;
   }, [currentMonth, dailyData, selectedDate]);
+
   return (
     <div className='calendar-grid' id='calendar-days'>
       {cells.map((c) =>

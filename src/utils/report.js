@@ -96,28 +96,42 @@ export const weeklyReport = (date, dailyData) => {
   return weeks;
 };
 export const monthlyReport = (date, dailyData) => {
-  const y = date.getFullYear(),
-    m = date.getMonth(),
-    dim = new Date(y, m + 1, 0).getDate();
-  let t = { study: 0, sleep: 0, wasted: 0 },
-    days = 0;
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const dim = new Date(y, m + 1, 0).getDate();
+
+  let t = { study: 0, sleep: 0, wasted: 0 };
+  let days = 0;
+
   for (let d = 1; d <= dim; d++) {
-    const k = getDateKey(new Date(y, m, d)),
-      v = dailyData[k];
+    const k = getDateKey(new Date(y, m, d));
+    const v = dailyData[k];
+
     if (v) {
-      t.study += v.study || 0;
-      t.sleep += v.sleep || 0;
-      t.wasted += v.wasted || 0;
+      const study = v.study || 0;
+      const sleep = v.sleep || 0;
+      const wasted = v.wasted || 0;
+      const total = study + sleep + wasted;
+
+      // 🔴 skip days that are 0 + 0 + 0
+      if (total === 0) continue;
+
+      t.study += study;
+      t.sleep += sleep;
+      t.wasted += wasted;
       days++;
     }
   }
+
   const a = {
     study: days ? (t.study / days).toFixed(2) : 0,
     sleep: days ? (t.sleep / days).toFixed(2) : 0,
     wasted: days ? (t.wasted / days).toFixed(2) : 0,
   };
+
   return { totals: t, averages: a, daysTracked: days, daysInMonth: dim };
 };
+
 export const patternAnalysis = (patterns) => {
   const c = {};
   Object.values(patterns).forEach((arr) =>
@@ -130,5 +144,3 @@ export const patternAnalysis = (patterns) => {
     .sort((a, b) => b[1] - a[1])
     .map(([pattern, count]) => ({ pattern, count }));
 };
-
-

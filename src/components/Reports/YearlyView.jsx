@@ -1,19 +1,24 @@
 import React from 'react';
 import { useTimeStore } from '../../store/useTimeStore';
 import { monthlyReport, patternAnalysis } from '../../utils/report';
+
 export default function YearlyView() {
   const { reportRange, setReportRange, dailyData, wastedPatterns } =
     useTimeStore();
+
   const year = reportRange.getFullYear();
-  const cm = new Date().getMonth(),
-    cy = new Date().getFullYear();
+  const cm = new Date().getMonth();
+  const cy = new Date().getFullYear();
+
   const months = [...Array(12).keys()].map((m) => {
     const date = new Date(year, m, 1);
     return {
+      index: m, // keep original month index
       name: date.toLocaleString('default', { month: 'long' }),
       ...monthlyReport(date, dailyData),
     };
   });
+
   const totals = months.reduce(
     (a, m) => ({
       study: a.study + m.totals.study,
@@ -23,7 +28,23 @@ export default function YearlyView() {
     }),
     { study: 0, sleep: 0, wasted: 0, daysTracked: 0 }
   );
+
   const pats = patternAnalysis(wastedPatterns);
+
+  // 🔹 Only show months with data in the current year
+  const visibleMonths = months.filter((m) => {
+    const totalHours = m.totals.study + m.totals.sleep + m.totals.wasted;
+    const isCur = year === cy && m.index === cm;
+
+    if (year === cy) {
+      // Show current month always, and any month where something is filled
+      return isCur || totalHours > 0 || m.daysTracked > 0;
+    }
+
+    // For past/future years: keep all months (or change to same rule if you prefer)
+    return true;
+  });
+
   return (
     <div className='card'>
       <div className='card-header'>
@@ -49,6 +70,7 @@ export default function YearlyView() {
           </button>
         </div>
       </div>
+
       <div className='overflow-x-auto'>
         <table>
           <thead>
@@ -60,17 +82,25 @@ export default function YearlyView() {
               <th className='text-center'>Days Tracked</th>
             </tr>
           </thead>
+
           <tbody>
-            {months.map((m, i) => {
-              const isTracked = m.daysTracked > 0,
-                isCur = year === cy && i === cm;
-              const style = isCur
-                ? { background: 'linear-gradient(to right, #faf5ff, #add8e6)' }
-                : isTracked
-                ? { backgroundColor: '#f0fdf4' }
-                : { backgroundColor: '#e7e8eb' };
+            {visibleMonths.map((m) => {
+              const isTracked = m.daysTracked > 0;
+              const isCur = year === cy && m.index === cm;
+
+              let style;
+              if (isCur) {
+                style = {
+                  background: 'linear-gradient(to right, #faf5ff, #add8e6)',
+                };
+              } else if (isTracked) {
+                style = { backgroundColor: '#f0fdf4' };
+              } else {
+                style = { backgroundColor: '#e7e8eb' };
+              }
+
               return (
-                <tr key={`m-${i}`} style={style}>
+                <tr key={`m-${m.index}`} style={style}>
                   <td style={{ fontWeight: 500 }}>{m.name}</td>
                   <td className='text-center'>
                     <div style={{ color: '#3b82f6' }}>
@@ -101,6 +131,7 @@ export default function YearlyView() {
               );
             })}
           </tbody>
+
           <tfoot>
             <tr className='year-total'>
               <td>Year Total</td>
@@ -118,6 +149,7 @@ export default function YearlyView() {
           </tfoot>
         </table>
       </div>
+
       <div className='pattern-list'>
         {pats.length > 0 && (
           <div>

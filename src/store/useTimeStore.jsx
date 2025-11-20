@@ -251,10 +251,24 @@ export const TimeStoreProvider = ({ children }) => {
       return alert(
         'Read-only in LIVE mode. Switch to “Your Tracker (private)” to edit.'
       );
-    const d = dailyData[k] || { study: 0, sleep: 0, wasted: 0 };
-    const v = parseFloat(val) || 0;
-    const n = { ...d, [kind]: v };
-    setDailyData((prev) => ({ ...prev, [k]: n }));
+
+    setDailyData((prev) => {
+      const d = prev[k] || { study: 0, sleep: 0, wasted: 0 };
+      const v = parseFloat(val) || 0;
+
+      const n = { ...d, [kind]: v };
+      const total = n.study + n.sleep + n.wasted;
+
+      // 🔴 If all three are 0 → this day should NOT be considered tracked
+      if (total === 0) {
+        const copy = { ...prev };
+        delete copy[k]; // remove that day completely
+        return copy;
+      }
+
+      // ✅ Otherwise, store/update normally
+      return { ...prev, [k]: n };
+    });
   };
 
   const addPattern = (k, txt) => {
