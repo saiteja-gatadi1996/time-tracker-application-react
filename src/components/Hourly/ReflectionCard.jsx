@@ -145,6 +145,7 @@ export default function ReflectionCard() {
                 <input
                   type='text'
                   value={item}
+                  placeholder='“Things that make you happy (e.g., working out at the gym)”'
                   onChange={(e) =>
                     setHappinessItems((prev) => {
                       const next = [...prev];

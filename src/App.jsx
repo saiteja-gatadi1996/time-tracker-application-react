@@ -148,7 +148,7 @@ export default function App() {
             <div
               className='mode-banner'
               style={{
-                marginTop: 8,
+                marginTop: 18,
                 padding: '10px 12px',
                 borderRadius: 8,
                 background: isLive ? '#f0fdf4' : '#f3f4f6',
