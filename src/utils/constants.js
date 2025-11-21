@@ -18,6 +18,8 @@ export const STORAGE = {
   PATTERNS: 'TT_PATTERNS',
   REFLECTIONS: 'TT_REFLECTIONS',
   POMODORO: 'TT_POMODORO',
+  HAPPINESS_ITEMS: 'tt_happiness_items',
+  HAPPINESS_STATUS: 'tt_happiness_status',
 };
 
 // Data source key + canonical values

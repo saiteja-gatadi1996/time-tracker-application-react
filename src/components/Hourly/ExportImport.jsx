@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useTimeStore } from '../../store/useTimeStore';
-export default function ExportImport() {
+export default function ExportImport({ isReadOnly }) {
   const { exportAll, importAll } = useTimeStore();
   const ref = useRef(null);
   const onChange = (e) => {
@@ -28,7 +28,7 @@ export default function ExportImport() {
         Export Data
       </button>
       <label
-        className='button'
+        className={`button ${isReadOnly ? 'ro' : ''}`}
         htmlFor='import-file'
         style={{
           display: 'flex',
@@ -44,7 +44,7 @@ export default function ExportImport() {
         ref={ref}
         id='import-file'
         type='file'
-        className='hidden'
+        className={`hidden ${isReadOnly ? 'ro' : ''}`}
         accept='application/json'
         onChange={onChange}
       />

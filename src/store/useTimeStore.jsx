@@ -94,6 +94,22 @@ export const TimeStoreProvider = ({ children }) => {
     }
   });
 
+  const [happinessItems, setHappinessItems] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.HAPPINESS_ITEMS)) || [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [happinessStatus, setHappinessStatus] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.HAPPINESS_STATUS)) || {};
+    } catch {
+      return {};
+    }
+  });
+
   // Keep dataSource in sync across tabs or when LiveSwitcher updates it
   useEffect(() => {
     const sync = () =>
@@ -117,6 +133,12 @@ export const TimeStoreProvider = ({ children }) => {
       );
       setReflections(
         JSON.parse(localStorage.getItem(STORAGE.REFLECTIONS)) || {}
+      );
+      setHappinessItems(
+        JSON.parse(localStorage.getItem(STORAGE.HAPPINESS_ITEMS)) || []
+      );
+      setHappinessStatus(
+        JSON.parse(localStorage.getItem(STORAGE.HAPPINESS_STATUS)) || {}
       );
     } catch {}
   }, [isLocal, role]);
@@ -149,6 +171,26 @@ export const TimeStoreProvider = ({ children }) => {
       localStorage.setItem(STORAGE.REFLECTIONS, JSON.stringify(reflections));
     } catch {}
   }, [reflections, isLocal]);
+
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      localStorage.setItem(
+        STORAGE.HAPPINESS_ITEMS,
+        JSON.stringify(happinessItems)
+      );
+    } catch {}
+  }, [happinessItems, isLocal]);
+
+  useEffect(() => {
+    if (!isLocal) return;
+    try {
+      localStorage.setItem(
+        STORAGE.HAPPINESS_STATUS,
+        JSON.stringify(happinessStatus)
+      );
+    } catch {}
+  }, [happinessStatus, isLocal]);
 
   // Derived day key + computed totals
   const dateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
@@ -297,7 +339,14 @@ export const TimeStoreProvider = ({ children }) => {
     const blob = new Blob(
       [
         JSON.stringify(
-          { dailyData, hourlyData, wastedPatterns, reflections },
+          {
+            dailyData,
+            hourlyData,
+            wastedPatterns,
+            reflections,
+            happinessItems,
+            happinessStatus,
+          },
           null,
           2
         ),
@@ -322,6 +371,8 @@ export const TimeStoreProvider = ({ children }) => {
       const hourly = obj?.hourlyData || {};
       let patterns = obj?.wastedPatterns || {};
       const refl = obj?.reflections || {};
+      const happItems = obj?.happinessItems || [];
+      const happStatus = obj?.happinessStatus || {};
 
       if (Object.keys(hourly).length > 0) {
         const rec = recomputeFromHourly(hourly);
@@ -333,6 +384,8 @@ export const TimeStoreProvider = ({ children }) => {
       setHourlyData(hourly);
       setWastedPatterns(patterns);
       setReflections(refl);
+      setHappinessItems(happItems);
+      setHappinessStatus(happStatus);
     } catch (err) {
       console.error('Import failed', err);
       alert('Import failed: invalid JSON');
@@ -643,6 +696,10 @@ export const TimeStoreProvider = ({ children }) => {
     setWastedPatterns,
     reflections,
     setReflections,
+    happinessItems,
+    setHappinessItems,
+    happinessStatus,
+    setHappinessStatus,
 
     // derived
     dateKey,

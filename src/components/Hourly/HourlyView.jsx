@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { useTimeStore } from '../../store/useTimeStore';
-import { formatHours, isPast } from '../../utils/date';
+import { formatHours, isPast, getDateKey, timeRange } from '../../utils/date';
 import HourlyChips from './HourlyChips';
 import HourlyTable from './HourlyTable';
 import ReflectionCard from './ReflectionCard';
@@ -18,6 +18,52 @@ export default function HourlyView() {
   } = useTimeStore();
 
   const accountedWarn = derived?.accounted > 24.001;
+
+  // 🔎 Detect 7-day wasted streak on the same time slots
+  const wastedStreak = useMemo(() => {
+    const STREAK_DAYS = 7;
+
+    if (!selectedDate || !hourlyData) return null;
+
+    // Collect dateKeys for last 7 consecutive days (including selectedDate)
+    const keys = [];
+    for (let i = 0; i < STREAK_DAYS; i++) {
+      const d = new Date(selectedDate);
+      d.setDate(d.getDate() - i);
+      keys.push(getDateKey(d));
+    }
+
+    // If any of those days has no hourly data at all, we can't count a full streak
+    const allHaveSomeData = keys.every((k) => !!hourlyData[k]);
+    if (!allHaveSomeData) return null;
+
+    const slots = [];
+
+    // Scan every half-hour slot (24 hours * 2 halves)
+    for (let h = 0; h < 24; h++) {
+      ['first', 'second'].forEach((half) => {
+        const isWastedAll7 = keys.every((k) => {
+          const day = hourlyData[k];
+          if (!day || !day[h]) return false;
+          return day[h][half] === 'Wasted';
+        });
+
+        if (isWastedAll7) {
+          slots.push({ hour: h, half });
+        }
+      });
+    }
+
+    if (!slots.length) return null;
+
+    // Build human-readable labels for the slots
+    const labels = slots.map(({ hour, half }) => {
+      const tr = timeRange(hour);
+      return half === 'first' ? tr.first : tr.second;
+    });
+
+    return { slots, labels };
+  }, [selectedDate, hourlyData]);
 
   const wastedReasonsSummary = useMemo(() => {
     const day = hourlyData[dateKey];
@@ -141,6 +187,41 @@ export default function HourlyView() {
             </p>
           )}
 
+          {wastedStreak && (
+            <p
+              style={{
+                color: '#92400e',
+                fontSize: 18,
+                fontWeight: 600,
+                margin: '0 0 12px 0',
+                padding: '8px 14px',
+                borderRadius: 10,
+                background: '#fef2f2',
+                lineHeight: 1.5,
+                width: 'fit-content',
+              }}
+            >
+              ⚠️{' '}
+              <span style={{ fontWeight: 700 }}>Warning: Time blocks 👉👉</span>{' '}
+              <span
+                style={{
+                  fontWeight: 800,
+                  fontSize: '20px',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: '3px',
+                }}
+              >
+                {wastedStreak.labels.join(', ')}
+              </span>{' '}
+              has been wasted for{' '}
+              <span style={{ fontWeight: 700 }}>7 straight days</span> ⏳
+              <br />
+              <br />
+              🚨 This is a red flag — either you take control of this slot now,
+              or it will keep owning you.
+            </p>
+          )}
+
           <HourlyChips
             study={formatHours(derived?.study || 0)}
             sleep={formatHours(derived?.sleep || 0)}
@@ -172,7 +253,7 @@ export default function HourlyView() {
         {/* RIGHT CARD */}
         <div className='card' ref={rightCardRef}>
           <ReflectionCard />
-          <ExportImport />
+          <ExportImport isReadOnly={isReadOnly} />
 
           {wastedReasonEntries.length > 0 && (
             <div
