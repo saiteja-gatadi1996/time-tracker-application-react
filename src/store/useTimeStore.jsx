@@ -552,6 +552,8 @@ export const TimeStoreProvider = ({ children }) => {
       setHourlyData(d.hourlyData || {});
       setWastedPatterns(d.wastedPatterns || {});
       setReflections(d.reflections || {});
+      setHappinessItems(d.happinessItems || []);
+      setHappinessStatus(d.happinessStatus || {});
 
       // Cache for publish guard
       liveSnapshotRef.current = d;
@@ -560,6 +562,8 @@ export const TimeStoreProvider = ({ children }) => {
         hourlyData: d.hourlyData || {},
         wastedPatterns: d.wastedPatterns || {},
         reflections: d.reflections || {},
+        happinessItems: d.happinessItems || [],
+        happinessStatus: d.happinessStatus || {},
       });
     });
 
@@ -585,6 +589,8 @@ export const TimeStoreProvider = ({ children }) => {
       setHourlyData(d.hourlyData || {});
       setWastedPatterns(d.wastedPatterns || {});
       setReflections(d.reflections || {});
+      setHappinessItems(d.happinessItems || []);
+      setHappinessStatus(d.happinessStatus || {});
     }
   }, [role, isLocal]); // don't depend on data objects — we only care about the mode/role
 
@@ -628,10 +634,14 @@ export const TimeStoreProvider = ({ children }) => {
       return;
     }
 
-    // never publish an empty payload (prevents accidental wipes)
-    const isEmpty = [dailyData, hourlyData, wastedPatterns, reflections].every(
-      isEmptyObj
-    );
+    const isEmptyCore = [
+      dailyData,
+      hourlyData,
+      wastedPatterns,
+      reflections,
+      happinessStatus,
+    ].every(isEmptyObj);
+    const isEmpty = isEmptyCore && happinessItems.length === 0;
     if (isEmpty) return;
 
     const currHash = hashPayload({
@@ -639,6 +649,8 @@ export const TimeStoreProvider = ({ children }) => {
       hourlyData,
       wastedPatterns,
       reflections,
+      happinessItems,
+      happinessStatus,
     });
     if (currHash === liveHashRef.current) return; // already in sync with server
 
@@ -652,6 +664,8 @@ export const TimeStoreProvider = ({ children }) => {
           hourlyData,
           wastedPatterns,
           reflections,
+          happinessItems,
+          happinessStatus,
           updatedAt: Date.now(),
         },
         { merge: true }
@@ -659,7 +673,17 @@ export const TimeStoreProvider = ({ children }) => {
     }, 600);
 
     return () => clearTimeout(saveTimerRef.current);
-  }, [role, isLocal, dailyData, hourlyData, wastedPatterns, reflections, db]);
+  }, [
+    role,
+    isLocal,
+    dailyData,
+    hourlyData,
+    wastedPatterns,
+    reflections,
+    happinessItems,
+    happinessStatus,
+    db,
+  ]);
 
   // -----------------------
   // Auth helpers
