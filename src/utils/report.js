@@ -24,17 +24,19 @@ export const recalcTotalsOnly = (k, hData) => {
   const accounted = s + sl + w + countMiscHours(rows);
   return { study: s, sleep: sl, wasted: w, accounted };
 };
+
 export const autoCalcPatterns = (k, hData) => {
   const rows =
     hData[k] ||
     Array.from({ length: 24 }, () => ({ first: null, second: null }));
   let p = [],
     prev = null;
-  const sleepRange = [22, 4];
+
   for (let h = 0; h < 24; h++) {
     const a = rows[h].first,
       b = rows[h].second;
     const add = (x) => p.push(x);
+
     if (a === 'Wasted') {
       if (prev === 'MISC-GYM') add('Post Gym');
       else if (prev === 'MISC-LUNCH') add('Post Lunch');
@@ -42,8 +44,8 @@ export const autoCalcPatterns = (k, hData) => {
       else if (prev === 'MISC-DINNER') add('Post Dinner');
       else if (prev === 'MISC-BREAK') add('Post BREAK');
       else if (prev === 'MISC-WOKE_UP') add('Post Wakeup');
-      else if (h < sleepRange[0] || h < sleepRange[1]) add('Pre Sleep');
     }
+
     if (b === 'Wasted') {
       if (a === 'MISC-GYM') add('Post Gym');
       else if (a === 'MISC-LUNCH') add('Post Lunch');
@@ -51,12 +53,14 @@ export const autoCalcPatterns = (k, hData) => {
       else if (a === 'MISC-DINNER') add('Post Dinner');
       else if (a === 'MISC-BREAK') add('Post BREAK');
       else if (a === 'MISC-WOKE_UP') add('Post Wakeup');
-      else if (h < sleepRange[0] || h < sleepRange[1]) add('Pre Sleep');
     }
+
     prev = b || a;
   }
+
   return p.filter((x, i) => p.indexOf(x) === i);
 };
+
 export const weeklyReport = (date, dailyData) => {
   const y = date.getFullYear(),
     m = date.getMonth(),
