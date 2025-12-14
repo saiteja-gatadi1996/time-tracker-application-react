@@ -30,12 +30,12 @@ export default function NavBar({ view, setView }) {
       <Btn active={view === 'pomodoro'} onClick={() => setView('pomodoro')}>
         ⏳ Focus Timer
       </Btn>
-      <Btn
+      {/* <Btn
         active={view === 'accountability'}
         onClick={() => setView('accountability')}
       >
         🎯 Get Better Everyday
-      </Btn>
+      </Btn> */}
     </div>
   );
 }
