@@ -10,8 +10,10 @@ import WeeklyView from './components/Reports/WeeklyView';
 import MonthlyView from './components/Reports/MonthlyView';
 import YearlyView from './components/Reports/YearlyView';
 import PomodoroView from './components/Pomodoro/PomodoroView';
+import AccountabilityView from './components/Accountability/AccountabilityView';
 import LiveSwitcher from './components/LiveSwitcher';
 import './styles/time-tracker.css';
+import '../src/styles/accountability.css';
 import { auth, signInGoogle } from './utils/firebase';
 import { ADMIN, DS_KEY, SOURCE } from './utils/constants';
 
@@ -20,7 +22,7 @@ export default function App() {
 
   // auth state
   const [user, setUser] = useState(null);
-  const [authError, setAuthError] = useState(''); // for “only admin can sign in” message
+  const [authError, setAuthError] = useState(''); // for "only admin can sign in" message
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, setUser);
@@ -141,28 +143,30 @@ export default function App() {
             {/* Navigation */}
             <NavBar view={view} setView={setView} />
 
-            {/* Data Source switcher (Local vs LIVE) */}
-            <LiveSwitcher isAdmin={isAdmin} />
+            {/* Data Source switcher (Local vs LIVE) - Hide for accountability view */}
+            {view !== 'accountability' && <LiveSwitcher isAdmin={isAdmin} />}
 
-            {/* Mode banner */}
-            <div
-              className='mode-banner'
-              style={{
-                marginTop: 18,
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: isLive ? '#f0fdf4' : '#f3f4f6',
-                border: '1px solid #e5e7eb',
-                fontSize: 14,
-              }}
-            >
-              Viewing: <strong>{bannerText}</strong>
-              {isLive && !isAdmin && (
-                <span style={{ marginLeft: 8 }}>
-                  🔒 read-only UI; edits blocked
-                </span>
-              )}
-            </div>
+            {/* Mode banner - Hide for accountability view */}
+            {view !== 'accountability' && (
+              <div
+                className='mode-banner'
+                style={{
+                  marginTop: 18,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: isLive ? '#f0fdf4' : '#f3f4f6',
+                  border: '1px solid #e5e7eb',
+                  fontSize: 14,
+                }}
+              >
+                Viewing: <strong>{bannerText}</strong>
+                {isLive && !isAdmin && (
+                  <span style={{ marginLeft: 8 }}>
+                    🔒 read-only UI; edits blocked
+                  </span>
+                )}
+              </div>
+            )}
           </header>
 
           {view === 'hourly' && <HourlyView />}
@@ -172,6 +176,7 @@ export default function App() {
           {view === 'monthly' && <MonthlyView />}
           {view === 'yearly' && <YearlyView />}
           {view === 'pomodoro' && <PomodoroView />}
+          {view === 'accountability' && <AccountabilityView />}
         </div>
       </PomodoroProvider>
     </TimeStoreProvider>

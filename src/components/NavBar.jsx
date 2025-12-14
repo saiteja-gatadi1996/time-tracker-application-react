@@ -1,9 +1,11 @@
 import React from 'react';
+
 const Btn = ({ active, onClick, children }) => (
   <button className={`button ${active ? 'active' : ''}`} onClick={onClick}>
     {children}
   </button>
 );
+
 export default function NavBar({ view, setView }) {
   return (
     <div className='button-group' id='nav-buttons'>
@@ -27,6 +29,12 @@ export default function NavBar({ view, setView }) {
       </Btn>
       <Btn active={view === 'pomodoro'} onClick={() => setView('pomodoro')}>
         ⏳ Focus Timer
+      </Btn>
+      <Btn
+        active={view === 'accountability'}
+        onClick={() => setView('accountability')}
+      >
+        🎯 Get Better Everyday
       </Btn>
     </div>
   );
