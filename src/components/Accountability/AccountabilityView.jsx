@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { auth, db, doc, onSnapshot, setDoc } from '../../utils/firebase';
 import '../../styles/accountability.css';
 
 const STORAGE_KEY = 'ACCOUNTABILITY_DATA';
 const PROBLEMS_KEY = 'ACCOUNTABILITY_PROBLEMS';
+const FIRESTORE_COLLECTION = 'accountability'; // Firestore collection name
 
 export default function AccountabilityView() {
   const [currentStep, setCurrentStep] = useState(1);
   const [problems, setProblems] = useState([]);
   const [setupComplete, setSetupComplete] = useState(false);
+  const [user, setUser] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [data, setData] = useState({
     startDate: null,
@@ -29,10 +33,37 @@ export default function AccountabilityView() {
 
   const [currentQuote, setCurrentQuote] = useState(motivationalQuotes[0]);
 
-  // Load data from localStorage on mount
+  // Listen to auth state
   useEffect(() => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    const savedProblems = localStorage.getItem(PROBLEMS_KEY);
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Generate unique user ID (use Firebase UID if signed in, otherwise localStorage-based ID)
+  const getUserId = () => {
+    if (user?.uid) {
+      return user.uid; // Firebase user ID
+    }
+
+    // For anonymous users, generate a unique ID and store in localStorage
+    let anonymousId = localStorage.getItem('ACCOUNTABILITY_ANON_ID');
+    if (!anonymousId) {
+      anonymousId = `anon_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      localStorage.setItem('ACCOUNTABILITY_ANON_ID', anonymousId);
+    }
+    return anonymousId;
+  };
+
+  const userId = getUserId();
+
+  // Load data from localStorage on mount (immediate cache)
+  useEffect(() => {
+    const savedData = localStorage.getItem(`${STORAGE_KEY}_${userId}`);
+    const savedProblems = localStorage.getItem(`${PROBLEMS_KEY}_${userId}`);
 
     if (savedData && savedProblems) {
       setData(JSON.parse(savedData));
@@ -44,7 +75,71 @@ export default function AccountabilityView() {
     setCurrentQuote(
       motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]
     );
-  }, []);
+  }, [userId]);
+
+  // Subscribe to Firebase if user is signed in
+  useEffect(() => {
+    if (!user?.uid) return; // Only sync if signed in
+
+    const accountabilityRef = doc(db, FIRESTORE_COLLECTION, user.uid);
+
+    const unsubscribe = onSnapshot(accountabilityRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const firebaseData = snapshot.data();
+
+        // Update state from Firebase
+        if (firebaseData.data) setData(firebaseData.data);
+        if (firebaseData.problems) setProblems(firebaseData.problems);
+        if (firebaseData.setupComplete !== undefined) {
+          setSetupComplete(firebaseData.setupComplete);
+        }
+
+        // Also update localStorage as cache
+        localStorage.setItem(
+          `${STORAGE_KEY}_${userId}`,
+          JSON.stringify(firebaseData.data || {})
+        );
+        localStorage.setItem(
+          `${PROBLEMS_KEY}_${userId}`,
+          JSON.stringify(firebaseData.problems || [])
+        );
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user, userId]);
+
+  // Save to Firebase if user is signed in (with debounce)
+  useEffect(() => {
+    if (!user?.uid || !setupComplete) return;
+
+    const saveTimer = setTimeout(() => {
+      setIsSyncing(true);
+      const accountabilityRef = doc(db, FIRESTORE_COLLECTION, user.uid);
+
+      setDoc(
+        accountabilityRef,
+        {
+          data,
+          problems,
+          setupComplete,
+          updatedAt: Date.now(),
+          userEmail: user.email || 'anonymous',
+        },
+        { merge: true }
+      )
+        .then(() => {
+          console.log('✅ Accountability data synced to Firebase');
+          setIsSyncing(false);
+        })
+        .catch((error) => {
+          console.error('❌ Firebase sync error:', error);
+          setIsSyncing(false);
+        });
+    }, 600); // 600ms debounce
+
+    return () => clearTimeout(saveTimer);
+  }, [data, problems, setupComplete, user]);
 
   // Render approach inputs when we move to step 3 and problems are set
   useEffect(() => {
@@ -69,13 +164,16 @@ export default function AccountabilityView() {
     }
   }, [currentStep, problems]);
 
-  // Save data to localStorage
+  // Save to localStorage (always, for everyone)
   useEffect(() => {
     if (setupComplete) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      localStorage.setItem(PROBLEMS_KEY, JSON.stringify(problems));
+      localStorage.setItem(`${STORAGE_KEY}_${userId}`, JSON.stringify(data));
+      localStorage.setItem(
+        `${PROBLEMS_KEY}_${userId}`,
+        JSON.stringify(problems)
+      );
     }
-  }, [data, problems, setupComplete]);
+  }, [data, problems, setupComplete, userId]);
 
   const getTodayKey = () => {
     return new Date().toISOString().split('T')[0];
@@ -239,8 +337,25 @@ export default function AccountabilityView() {
       )
     ) {
       if (confirm('This action cannot be undone. Confirm again to proceed.')) {
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(PROBLEMS_KEY);
+        // Clear localStorage
+        localStorage.removeItem(`${STORAGE_KEY}_${userId}`);
+        localStorage.removeItem(`${PROBLEMS_KEY}_${userId}`);
+
+        // Clear Firebase if signed in
+        if (user?.uid) {
+          const accountabilityRef = doc(db, FIRESTORE_COLLECTION, user.uid);
+          setDoc(
+            accountabilityRef,
+            {
+              data: { startDate: null, dailyRecords: {} },
+              problems: [],
+              setupComplete: false,
+              updatedAt: Date.now(),
+            },
+            { merge: true }
+          );
+        }
+
         window.location.reload();
       }
     }
@@ -325,6 +440,35 @@ export default function AccountabilityView() {
             <p style={{ fontSize: '1.2em', color: '#666', marginTop: '10px' }}>
               Let's set up your journey to excellence
             </p>
+            {user ? (
+              <div
+                style={{
+                  marginTop: '15px',
+                  padding: '10px',
+                  background: '#f0fdf4',
+                  borderRadius: '8px',
+                  fontSize: '0.9em',
+                  color: '#166534',
+                }}
+              >
+                ☁️ Signed in as <strong>{user.email}</strong> - Your data will
+                sync across devices
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: '15px',
+                  padding: '10px',
+                  background: '#fef9c3',
+                  borderRadius: '8px',
+                  fontSize: '0.9em',
+                  color: '#854d0e',
+                }}
+              >
+                💾 Anonymous mode - Data saved locally only. Sign in to sync
+                across devices.
+              </div>
+            )}
           </div>
 
           {currentStep === 1 && (
@@ -388,7 +532,7 @@ export default function AccountabilityView() {
                   <input
                     type='text'
                     className='input-field problem-input'
-                    defaultValue='Snoozing the alarm - my mindset has adjusted to treating everything as low priority'
+                    defaultValue='Snooze the alarm - my mindset has adjusted to treating everything as low priority'
                     placeholder='Example: I snooze my alarm and start my day late...'
                   />
                 </div>
@@ -452,6 +596,30 @@ export default function AccountabilityView() {
         <p style={{ fontSize: '1.2em', color: '#666', marginTop: '10px' }}>
           Chase Excellence Every Single Day
         </p>
+        {isSyncing && (
+          <div
+            style={{
+              marginTop: '10px',
+              fontSize: '0.9em',
+              color: '#667eea',
+              fontWeight: 'bold',
+            }}
+          >
+            ☁️ Syncing to cloud...
+          </div>
+        )}
+        {!user && (
+          <div
+            style={{
+              marginTop: '10px',
+              fontSize: '0.9em',
+              color: '#854d0e',
+              fontWeight: 'bold',
+            }}
+          >
+            💾 Local storage mode - Sign in to sync across devices
+          </div>
+        )}
         <div className='journey-stats'>
           <div className='accountability-stat-card'>
             <h3>{stats.totalDays}</h3>
