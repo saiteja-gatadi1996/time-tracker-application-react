@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { auth, db, doc, onSnapshot, setDoc } from '../../utils/firebase';
+import { ADMIN } from '../../utils/constants';
 import '../../styles/accountability.css';
 
 const STORAGE_KEY = 'ACCOUNTABILITY_DATA';
 const PROBLEMS_KEY = 'ACCOUNTABILITY_PROBLEMS';
-const FIRESTORE_COLLECTION = 'accountability'; // Firestore collection name
+const FIRESTORE_COLLECTION = 'accountability';
+const PUBLIC_DOC_ID = 'saiteja'; // Your public accountability data (like timetracker/saiteja)
 
 export default function AccountabilityView() {
   const [currentStep, setCurrentStep] = useState(1);
   const [problems, setProblems] = useState([]);
   const [setupComplete, setSetupComplete] = useState(false);
   const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [viewMode, setViewMode] = useState('public'); // 'public' or 'personal'
 
   const [data, setData] = useState({
     startDate: null,
@@ -37,17 +41,17 @@ export default function AccountabilityView() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((currentUser) => {
       setUser(currentUser);
+      setIsAdmin(
+        currentUser?.uid === ADMIN.UID || currentUser?.email === ADMIN.EMAIL
+      );
     });
     return () => unsubscribe();
   }, []);
 
-  // Generate unique user ID (use Firebase UID if signed in, otherwise localStorage-based ID)
+  // Generate unique user ID for personal mode
   const getUserId = () => {
-    if (user?.uid) {
-      return user.uid; // Firebase user ID
-    }
+    if (user?.uid) return user.uid;
 
-    // For anonymous users, generate a unique ID and store in localStorage
     let anonymousId = localStorage.getItem('ACCOUNTABILITY_ANON_ID');
     if (!anonymousId) {
       anonymousId = `anon_${Date.now()}_${Math.random()
@@ -60,28 +64,51 @@ export default function AccountabilityView() {
 
   const userId = getUserId();
 
-  // Load data from localStorage on mount (immediate cache)
+  // Determine which document to use
+  const getDocumentId = () => {
+    if (viewMode === 'public') {
+      return PUBLIC_DOC_ID; // Everyone sees/uses saiteja's data
+    } else {
+      return userId; // Personal mode - user's own data
+    }
+  };
+
+  const documentId = getDocumentId();
+  const isReadOnly = viewMode === 'public' && !isAdmin;
+
+  // Load data from localStorage on mount (fallback)
   useEffect(() => {
-    const savedData = localStorage.getItem(`${STORAGE_KEY}_${userId}`);
-    const savedProblems = localStorage.getItem(`${PROBLEMS_KEY}_${userId}`);
+    const storageKey =
+      viewMode === 'public'
+        ? `${STORAGE_KEY}_${PUBLIC_DOC_ID}`
+        : `${STORAGE_KEY}_${userId}`;
+    const problemsKey =
+      viewMode === 'public'
+        ? `${PROBLEMS_KEY}_${PUBLIC_DOC_ID}`
+        : `${PROBLEMS_KEY}_${userId}`;
+
+    const savedData = localStorage.getItem(storageKey);
+    const savedProblems = localStorage.getItem(problemsKey);
 
     if (savedData && savedProblems) {
       setData(JSON.parse(savedData));
       setProblems(JSON.parse(savedProblems));
       setSetupComplete(true);
+    } else {
+      // Clear state when switching modes
+      setData({ startDate: null, dailyRecords: {} });
+      setProblems([]);
+      setSetupComplete(false);
     }
 
-    // Set random quote
     setCurrentQuote(
       motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]
     );
-  }, [userId]);
+  }, [viewMode, userId]);
 
-  // Subscribe to Firebase if user is signed in
+  // Subscribe to Firebase
   useEffect(() => {
-    if (!user?.uid) return; // Only sync if signed in
-
-    const accountabilityRef = doc(db, FIRESTORE_COLLECTION, user.uid);
+    const accountabilityRef = doc(db, FIRESTORE_COLLECTION, documentId);
 
     const unsubscribe = onSnapshot(accountabilityRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -94,28 +121,36 @@ export default function AccountabilityView() {
           setSetupComplete(firebaseData.setupComplete);
         }
 
-        // Also update localStorage as cache
+        // Cache to localStorage
+        const storageKey = `${STORAGE_KEY}_${documentId}`;
+        const problemsKey = `${PROBLEMS_KEY}_${documentId}`;
         localStorage.setItem(
-          `${STORAGE_KEY}_${userId}`,
+          storageKey,
           JSON.stringify(firebaseData.data || {})
         );
         localStorage.setItem(
-          `${PROBLEMS_KEY}_${userId}`,
+          problemsKey,
           JSON.stringify(firebaseData.problems || [])
         );
       }
     });
 
     return () => unsubscribe();
-  }, [user, userId]);
+  }, [documentId]);
 
-  // Save to Firebase if user is signed in (with debounce)
+  // Save to Firebase (with debounce)
   useEffect(() => {
-    if (!user?.uid || !setupComplete) return;
+    // Only save if:
+    // 1. In public mode AND you're admin, OR
+    // 2. In personal mode (anyone can save their own)
+    const canSave =
+      (viewMode === 'public' && isAdmin) || viewMode === 'personal';
+
+    if (!canSave || !setupComplete) return;
 
     const saveTimer = setTimeout(() => {
       setIsSyncing(true);
-      const accountabilityRef = doc(db, FIRESTORE_COLLECTION, user.uid);
+      const accountabilityRef = doc(db, FIRESTORE_COLLECTION, documentId);
 
       setDoc(
         accountabilityRef,
@@ -124,24 +159,27 @@ export default function AccountabilityView() {
           problems,
           setupComplete,
           updatedAt: Date.now(),
-          userEmail: user.email || 'anonymous',
+          owner: viewMode === 'public' ? 'saiteja' : user?.email || 'anonymous',
+          mode: viewMode,
         },
         { merge: true }
       )
         .then(() => {
-          console.log('✅ Accountability data synced to Firebase');
+          console.log(
+            `✅ Accountability data synced to Firebase (${documentId})`
+          );
           setIsSyncing(false);
         })
         .catch((error) => {
           console.error('❌ Firebase sync error:', error);
           setIsSyncing(false);
         });
-    }, 600); // 600ms debounce
+    }, 600);
 
     return () => clearTimeout(saveTimer);
-  }, [data, problems, setupComplete, user]);
+  }, [data, problems, setupComplete, isAdmin, viewMode, documentId, user]);
 
-  // Render approach inputs when we move to step 3 and problems are set
+  // Render approach inputs when we move to step 3
   useEffect(() => {
     if (currentStep === 3 && problems.length > 0) {
       const container = document.getElementById('approachInputs');
@@ -164,16 +202,15 @@ export default function AccountabilityView() {
     }
   }, [currentStep, problems]);
 
-  // Save to localStorage (always, for everyone)
+  // Save to localStorage
   useEffect(() => {
     if (setupComplete) {
-      localStorage.setItem(`${STORAGE_KEY}_${userId}`, JSON.stringify(data));
-      localStorage.setItem(
-        `${PROBLEMS_KEY}_${userId}`,
-        JSON.stringify(problems)
-      );
+      const storageKey = `${STORAGE_KEY}_${documentId}`;
+      const problemsKey = `${PROBLEMS_KEY}_${documentId}`;
+      localStorage.setItem(storageKey, JSON.stringify(data));
+      localStorage.setItem(problemsKey, JSON.stringify(problems));
     }
-  }, [data, problems, setupComplete, userId]);
+  }, [data, problems, setupComplete, documentId]);
 
   const getTodayKey = () => {
     return new Date().toISOString().split('T')[0];
@@ -196,7 +233,6 @@ export default function AccountabilityView() {
 
   const nextStep = () => {
     if (currentStep === 2) {
-      // Validate and save problems
       const inputs = document.querySelectorAll('.problem-input');
       const newProblems = [];
 
@@ -252,6 +288,13 @@ export default function AccountabilityView() {
   };
 
   const markProblem = (problemId, success) => {
+    if (isReadOnly) {
+      alert(
+        '🔒 You are viewing Saiteja\'s accountability tracker in read-only mode.\n\nSwitch to "Your Tracker" to track your own progress.'
+      );
+      return;
+    }
+
     const today = getTodayKey();
     const reflectionInput = document.getElementById(`reflection_${problemId}`);
     const reflection = reflectionInput ? reflectionInput.value.trim() : '';
@@ -272,7 +315,6 @@ export default function AccountabilityView() {
     newDailyRecords[today][problemId] = success;
     newDailyRecords[today][`${problemId}_reflection`] = reflection;
 
-    // Update streaks
     const updatedProblems = problems.map((p) => {
       if (p.id === problemId) {
         if (success) {
@@ -331,30 +373,33 @@ export default function AccountabilityView() {
   }, [data, problems]);
 
   const resetData = () => {
+    if (isReadOnly) {
+      alert('🔒 Cannot reset in read-only mode.');
+      return;
+    }
+
     if (
       confirm(
         '⚠️ WARNING: This will delete ALL your progress and data. Are you absolutely sure?'
       )
     ) {
       if (confirm('This action cannot be undone. Confirm again to proceed.')) {
-        // Clear localStorage
-        localStorage.removeItem(`${STORAGE_KEY}_${userId}`);
-        localStorage.removeItem(`${PROBLEMS_KEY}_${userId}`);
+        const storageKey = `${STORAGE_KEY}_${documentId}`;
+        const problemsKey = `${PROBLEMS_KEY}_${documentId}`;
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem(problemsKey);
 
-        // Clear Firebase if signed in
-        if (user?.uid) {
-          const accountabilityRef = doc(db, FIRESTORE_COLLECTION, user.uid);
-          setDoc(
-            accountabilityRef,
-            {
-              data: { startDate: null, dailyRecords: {} },
-              problems: [],
-              setupComplete: false,
-              updatedAt: Date.now(),
-            },
-            { merge: true }
-          );
-        }
+        const accountabilityRef = doc(db, FIRESTORE_COLLECTION, documentId);
+        setDoc(
+          accountabilityRef,
+          {
+            data: { startDate: null, dailyRecords: {} },
+            problems: [],
+            setupComplete: false,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        );
 
         window.location.reload();
       }
@@ -362,6 +407,13 @@ export default function AccountabilityView() {
   };
 
   const editProblems = () => {
+    if (isReadOnly) {
+      alert(
+        '🔒 Cannot edit in read-only mode. Switch to "Your Tracker" to create your own.'
+      );
+      return;
+    }
+
     if (
       confirm(
         'This will restart the setup wizard. Your progress data will be kept. Continue?'
@@ -440,7 +492,51 @@ export default function AccountabilityView() {
             <p style={{ fontSize: '1.2em', color: '#666', marginTop: '10px' }}>
               Let's set up your journey to excellence
             </p>
-            {user ? (
+
+            {/* Mode Switcher */}
+            <div
+              style={{
+                marginTop: '20px',
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'center',
+              }}
+            >
+              <button
+                className={`btn ${
+                  viewMode === 'public' ? 'btn-primary' : 'btn-secondary'
+                }`}
+                onClick={() => setViewMode('public')}
+              >
+                👁️ View Saiteja's Tracker
+              </button>
+              <button
+                className={`btn ${
+                  viewMode === 'personal' ? 'btn-primary' : 'btn-secondary'
+                }`}
+                onClick={() => setViewMode('personal')}
+              >
+                🎯 Your Tracker
+              </button>
+            </div>
+
+            {viewMode === 'public' && !isAdmin && (
+              <div
+                style={{
+                  marginTop: '15px',
+                  padding: '10px',
+                  background: '#fef2f2',
+                  borderRadius: '8px',
+                  fontSize: '0.9em',
+                  color: '#991b1b',
+                }}
+              >
+                👁️ Viewing Saiteja's accountability tracker (read-only). Switch
+                to "Your Tracker" to create your own!
+              </div>
+            )}
+
+            {viewMode === 'public' && isAdmin && (
               <div
                 style={{
                   marginTop: '15px',
@@ -451,22 +547,25 @@ export default function AccountabilityView() {
                   color: '#166534',
                 }}
               >
-                ☁️ Signed in as <strong>{user.email}</strong> - Your data will
-                sync across devices
+                ✏️ You can edit Saiteja's public tracker. Everyone can view your
+                progress!
               </div>
-            ) : (
+            )}
+
+            {viewMode === 'personal' && (
               <div
                 style={{
                   marginTop: '15px',
                   padding: '10px',
-                  background: '#fef9c3',
+                  background: user ? '#f0fdf4' : '#fef9c3',
                   borderRadius: '8px',
                   fontSize: '0.9em',
-                  color: '#854d0e',
+                  color: user ? '#166534' : '#854d0e',
                 }}
               >
-                💾 Anonymous mode - Data saved locally only. Sign in to sync
-                across devices.
+                {user
+                  ? `☁️ Signed in as ${user.email} - Your data syncs across devices`
+                  : '💾 Anonymous mode - Data saved locally. Sign in to sync across devices.'}
               </div>
             )}
           </div>
@@ -484,9 +583,7 @@ export default function AccountabilityView() {
                 }}
               >
                 This system helps you overcome procrastination and build
-                unstoppable momentum. You'll track daily progress, define your
-                approach to fixing problems, and see your transformation over
-                the next 20 years.
+                unstoppable momentum.
               </p>
               <p
                 style={{
@@ -508,8 +605,12 @@ export default function AccountabilityView() {
               </p>
               <div className='wizard-actions'>
                 <div></div>
-                <button className='btn btn-primary' onClick={nextStep}>
-                  Let's Begin 🚀
+                <button
+                  className='btn btn-primary'
+                  onClick={nextStep}
+                  disabled={isReadOnly}
+                >
+                  {isReadOnly ? '🔒 Read-Only Mode' : "Let's Begin 🚀"}
                 </button>
               </div>
             </div>
@@ -532,7 +633,7 @@ export default function AccountabilityView() {
                   <input
                     type='text'
                     className='input-field problem-input'
-                    defaultValue='Snooze the alarm - my mindset has adjusted to treating everything as low priority'
+                    defaultValue='Snoozing the alarm - my mindset has adjusted to treating everything as low priority'
                     placeholder='Example: I snooze my alarm and start my day late...'
                   />
                 </div>
@@ -561,8 +662,7 @@ export default function AccountabilityView() {
               <p
                 style={{ fontSize: '1em', color: '#666', marginBottom: '25px' }}
               >
-                For each obstacle, define your concrete approach and strategy to
-                overcome it.
+                For each obstacle, define your concrete approach and strategy.
               </p>
 
               <div id='approachInputs'></div>
@@ -591,11 +691,45 @@ export default function AccountabilityView() {
 
   return (
     <div className='accountability-container'>
+      {/* Mode Switcher at top */}
+      <div
+        style={{
+          background: 'white',
+          padding: '15px',
+          borderRadius: '15px',
+          marginBottom: '20px',
+          display: 'flex',
+          gap: '10px',
+          justifyContent: 'center',
+          boxShadow: '0 5px 15px rgba(0,0,0,0.1)',
+        }}
+      >
+        <button
+          className={`btn ${
+            viewMode === 'public' ? 'btn-primary' : 'btn-secondary'
+          }`}
+          onClick={() => setViewMode('public')}
+        >
+          👁️ View Saiteja's Tracker
+        </button>
+        <button
+          className={`btn ${
+            viewMode === 'personal' ? 'btn-primary' : 'btn-secondary'
+          }`}
+          onClick={() => setViewMode('personal')}
+        >
+          🎯 Your Tracker
+        </button>
+      </div>
+
       <div className='accountability-header'>
         <h1>🎯 Get Better Everyday</h1>
         <p style={{ fontSize: '1.2em', color: '#666', marginTop: '10px' }}>
-          Chase Excellence Every Single Day
+          {viewMode === 'public'
+            ? "Saiteja's Journey"
+            : 'Chase Excellence Every Single Day'}
         </p>
+
         {isSyncing && (
           <div
             style={{
@@ -608,18 +742,20 @@ export default function AccountabilityView() {
             ☁️ Syncing to cloud...
           </div>
         )}
-        {!user && (
+
+        {isReadOnly && (
           <div
             style={{
               marginTop: '10px',
               fontSize: '0.9em',
-              color: '#854d0e',
+              color: '#991b1b',
               fontWeight: 'bold',
             }}
           >
-            💾 Local storage mode - Sign in to sync across devices
+            👁️ Read-only mode - Viewing Saiteja's progress
           </div>
         )}
+
         <div className='journey-stats'>
           <div className='accountability-stat-card'>
             <h3>{stats.totalDays}</h3>
@@ -695,6 +831,7 @@ export default function AccountabilityView() {
                           className='reflection-input'
                           id={`reflection_${problem.id}`}
                           placeholder="How did you apply your approach today? What worked? What didn't?"
+                          disabled={isReadOnly}
                         />
                         <p
                           style={{
@@ -728,16 +865,16 @@ export default function AccountabilityView() {
                       <button
                         className='btn btn-success'
                         onClick={() => markProblem(problem.id, true)}
-                        disabled={status !== undefined}
+                        disabled={status !== undefined || isReadOnly}
                       >
-                        ✅ Conquered Today
+                        {isReadOnly ? '🔒 Read-Only' : '✅ Conquered Today'}
                       </button>
                       <button
                         className='btn btn-danger'
                         onClick={() => markProblem(problem.id, false)}
-                        disabled={status !== undefined}
+                        disabled={status !== undefined || isReadOnly}
                       >
-                        ❌ Failed Today
+                        {isReadOnly ? '🔒 Read-Only' : '❌ Failed Today'}
                       </button>
                     </div>
                   </div>
@@ -776,8 +913,20 @@ export default function AccountabilityView() {
 
         <div className='accountability-card'>
           <h2>⚙️ Settings</h2>
-          <button className='btn btn-primary' onClick={editProblems}>
-            ✏️ Edit Problems & Approaches
+          <button
+            className='btn btn-primary'
+            onClick={editProblems}
+            disabled={isReadOnly}
+          >
+            {isReadOnly ? '🔒 Read-Only' : '✏️ Edit Problems & Approaches'}
+          </button>
+          <button
+            className='btn btn-danger'
+            onClick={resetData}
+            style={{ marginLeft: '10px' }}
+            disabled={isReadOnly}
+          >
+            {isReadOnly ? '🔒 Read-Only' : '🔄 Reset All Data'}
           </button>
         </div>
       </div>
