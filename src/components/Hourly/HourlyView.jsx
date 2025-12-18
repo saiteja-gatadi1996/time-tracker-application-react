@@ -90,58 +90,58 @@ export default function HourlyView() {
   );
 
   // dynamic maxHeight for left scroll, based on right card
-  const rightCardRef = useRef(null);
-  const leftCardRef = useRef(null);
-  const leftScrollRef = useRef(null);
+  // const rightCardRef = useRef(null);
+  // const leftCardRef = useRef(null);
+  // const leftScrollRef = useRef(null);
 
-  const [scrollMaxHeight, setScrollMaxHeight] = useState(null);
+  // const [scrollMaxHeight, setScrollMaxHeight] = useState(null);
 
-  useEffect(() => {
-    const rightEl = rightCardRef.current;
-    const leftCardEl = leftCardRef.current;
-    const scrollEl = leftScrollRef.current;
+  // useEffect(() => {
+  //   const rightEl = rightCardRef.current;
+  //   const leftCardEl = leftCardRef.current;
+  //   const scrollEl = leftScrollRef.current;
 
-    if (!rightEl || !leftCardEl || !scrollEl) return;
+  //   if (!rightEl || !leftCardEl || !scrollEl) return;
 
-    const compute = () => {
-      const rightHeight = rightEl.offsetHeight;
-      if (!rightHeight) return;
+  //   const compute = () => {
+  //     const rightHeight = rightEl.offsetHeight;
+  //     if (!rightHeight) return;
 
-      const cardRect = leftCardEl.getBoundingClientRect();
-      const scrollRect = scrollEl.getBoundingClientRect();
+  //     const cardRect = leftCardEl.getBoundingClientRect();
+  //     const scrollRect = scrollEl.getBoundingClientRect();
 
-      // Space taken above the scroll area inside the left card
-      const offsetTop = scrollRect.top - cardRect.top;
+  //     // Space taken above the scroll area inside the left card
+  //     const offsetTop = scrollRect.top - cardRect.top;
 
-      // Base max-height = 60vh (like your old version)
-      const baseMaxPx = window.innerHeight * 0.6;
+  //     // Base max-height = 60vh (like your old version)
+  //     const baseMaxPx = window.innerHeight * 0.6;
 
-      // Available height if we want left card not to be shorter than right
-      const availableFromRight = rightHeight - offsetTop;
+  //     // Available height if we want left card not to be shorter than right
+  //     const availableFromRight = rightHeight - offsetTop;
 
-      const finalMax =
-        availableFromRight > baseMaxPx ? availableFromRight : baseMaxPx;
+  //     const finalMax =
+  //       availableFromRight > baseMaxPx ? availableFromRight : baseMaxPx;
 
-      setScrollMaxHeight(finalMax > 0 ? finalMax : baseMaxPx);
-    };
+  //     setScrollMaxHeight(finalMax > 0 ? finalMax : baseMaxPx);
+  //   };
 
-    compute();
+  //   compute();
 
-    // Recompute if window resizes (viewport 60vh changes)
-    const onResize = () => compute();
-    window.addEventListener('resize', onResize);
+  //   // Recompute if window resizes (viewport 60vh changes)
+  //   const onResize = () => compute();
+  //   window.addEventListener('resize', onResize);
 
-    return () => {
-      window.removeEventListener('resize', onResize);
-    };
-    // re-run when wasted breakdown changes or date changes
-  }, [wastedReasonEntries.length, selectedDate]);
+  //   return () => {
+  //     window.removeEventListener('resize', onResize);
+  //   };
+  //   // re-run when wasted breakdown changes or date changes
+  // }, [wastedReasonEntries.length, selectedDate]);
 
   return (
     <div className={`hourly-view ${isReadOnly ? 'ro' : ''}`}>
       <div className='grid-container'>
         {/* LEFT CARD */}
-        <div className='card hourly-card' ref={leftCardRef}>
+        <div className='card hourly-card'>
           <div className='card-header'>
             <h2 className='card-title'>
               Hourly Tracker — <span>{selectedDate.toDateString()}</span>
@@ -233,12 +233,8 @@ export default function HourlyView() {
           <div className='hourly-body'>
             <div
               className='hourly-scroll'
-              ref={leftScrollRef}
-              style={
-                scrollMaxHeight
-                  ? { maxHeight: scrollMaxHeight }
-                  : { maxHeight: '60vh' } // fallback
-              }
+              // ref={leftScrollRef}
+              style={{ maxHeight: '910px' }}
             >
               <HourlyTable />
             </div>
@@ -251,7 +247,7 @@ export default function HourlyView() {
         </div>
 
         {/* RIGHT CARD */}
-        <div className='card' ref={rightCardRef}>
+        <div className='card'>
           <ReflectionCard />
           <ExportImport isReadOnly={isReadOnly} />
 
